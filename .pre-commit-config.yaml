@@ -25,4 +25,3 @@ repos:
         args: [--checks='boost-*,bugprone-*,performance-*,readability-*,portability-*,modernize-*,clang-analyzer-*,cppcoreguidelines-*']
 
 
-j'ai écrit dans ton repo
