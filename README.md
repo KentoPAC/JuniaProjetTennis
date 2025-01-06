@@ -36,9 +36,7 @@ Avant de commencer à coder, assure-toi d'installer **Pre-commit** sur ton envir
 Le projet **JuniaProjetTennis** consiste à développer un système d'analyse de matchs de tennis. Ce projet vise à améliorer les performances des joueurs en fournissant des statistiques et des informations sur leurs matchs.
 
 ### Fonctionnalités principales :
-- Suivi des coups de raquette en temps réel.
-- Comptage des points et affichage des statistiques du joueur.
-- Application mobile connectée pour visualiser les résultats et les analyses.
+- Détéction de la balle de tennis pour savoir si elle est faute ou non.
 
 ---
 
