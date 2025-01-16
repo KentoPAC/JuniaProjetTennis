@@ -11,10 +11,6 @@ repos:
     hooks:
     -   id: black
 
--   repo: https://github.com/pycqa/flake8
-    rev: ''  # pick a git hash / tag to point to
-    hooks:
-    -   id: flake8
 
 -   repo: https://github.com/cpp-linter/cpp-linter-hooks
     rev: v0.6.0  # Use the ref you want to point at
@@ -23,5 +19,3 @@ repos:
         args: [--style=Google] # Other coding style: LLVM, GNU, Chromium, Microsoft, Mozilla, WebKit.
       - id: clang-tidy
         args: [--checks='boost-*,bugprone-*,performance-*,readability-*,portability-*,modernize-*,clang-analyzer-*,cppcoreguidelines-*']
-
-

@@ -3,10 +3,10 @@ from ultralytics import YOLO
 import time
 
 # Charger le modèle YOLOv8
-model = YOLO("yolov8n.pt")  # Utiliser le modèle léger pré-entraîné
+model = YOLO("./model/yolov8n.pt")  # Utiliser le modèle léger pré-entraîné
 
 # Charger une vidéo
-cap = cv2.VideoCapture(r"C:\Users\STROTZ Naela\PycharmProjects\pythonProject2\tennis.mp4")
+cap = cv2.VideoCapture(r"../assets/tennis.mp4")
 assert cap.isOpened(), "Erreur lors de la lecture du fichier "
 
 # Paramètres d'optimisation
@@ -48,16 +48,22 @@ while cap.isOpened():
             conf = box.conf[0]  # Confiance de la détection
             cls = box.cls[0]  # Classe de l'objet détecté
 
-            if int(cls) == sports_ball_id:  # Vérifier si l'objet est une balle de tennis
-                print(f"Balle de tennis détectée à : x1={x1}, y1={y1}, x2={x2}, y2={y2}")
+            if (
+                int(cls) == sports_ball_id
+            ):  # Vérifier si l'objet est une balle de tennis
+                print(
+                    f"Balle de tennis détectée à : x1={x1}, y1={y1}, x2={x2}, y2={y2}"
+                )
                 # Dessiner la boîte de détection sur l'image
-                cv2.rectangle(im0, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+                cv2.rectangle(
+                    im0, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2
+                )
 
     # Afficher l'image avec la détection
     cv2.imshow("Balle de Tennis Détectée", im0)
 
     # Appuyer sur "q" pour quitter
-    if cv2.waitKey(1) & 0xFF == ord('q'):
+    if cv2.waitKey(1) & 0xFF == ord("q"):
         break
 
 # Fin du traitement
