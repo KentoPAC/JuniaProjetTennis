@@ -11,11 +11,6 @@ repos:
     hooks:
     -   id: black
 
--   repo: https://github.com/pycqa/flake8
-    rev: ''  # pick a git hash / tag to point to
-    hooks:
-    -   id: flake8
-
 -   repo: https://github.com/cpp-linter/cpp-linter-hooks
     rev: v0.6.0  # Use the ref you want to point at
     hooks:
