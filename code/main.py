@@ -7,7 +7,7 @@ project = rf.workspace().project("tennis_ball_yolov8-4qhxa-qjgrh")
 model = project.version("1").model
 
 # Charger l'image
-image_path = "../assets/photo.png"  # Chemin de l'image
+image_path = "../assets/balle_haute.png"  # Chemin de l'image
 image = cv2.imread(image_path)
 assert image is not None, "Erreur : Impossible de charger l'image."
 
