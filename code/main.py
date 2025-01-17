@@ -6,7 +6,7 @@ import time
 model = YOLO("yolov8n.pt")  # Utiliser le modèle léger pré-entraîné
 
 # Charger une vidéo
-cap = cv2.VideoCapture(r"./assets/tennis.mp4")
+cap = cv2.VideoCapture(r"../assets/tennis.mp4")
 assert cap.isOpened(), "Erreur lors de la lecture du fichier "
 
 # Paramètres d'optimisation
