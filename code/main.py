@@ -10,17 +10,13 @@ cap = cv2.VideoCapture(r"../assets/tennis.mp4")
 assert cap.isOpened(), "Erreur lors de la lecture du fichier "
 
 # Paramètres d'optimisation
-# Réduire la résolution pour un traitement rapide
-resize_dimensions = (640, 480)
-# Traiter une frame sur 4 pour économiser les ressources
-skip_frames = 2
+resize_dimensions = (640, 480)  # Réduire la résolution pour un traitement rapide
+skip_frames = 2  # Traiter une frame sur 4 pour économiser les ressources
 
 frame_count = 0
 start_time = time.time()
 
 # Identifier l'ID de la balle de tennis dans COCO
-# L'ID de la balle de tennis dans COCO
-# est généralement 32 ou 41 selon les versions
 sports_ball_id = 32  # ID pour "sports ball"
 
 while cap.isOpened():
@@ -37,33 +33,26 @@ while cap.isOpened():
     im0 = cv2.resize(im0, resize_dimensions)
 
     # Détection avec YOLO
-    results = model(im0)  # Détecte les objets dans l'image
+    results = model(im0, verbose=False)  # Désactive les logs YOLO par défaut
 
     # Filtrer les résultats pour la balle de tennis (ID 32)
     for result in results:
-        # Récupérer les résultats de la
-        # détection des objets (boîtes de détection)
         boxes = result.boxes  # Accéder aux boîtes de détection
 
-        # Vérifier chaque détection
         for box in boxes:
-            # box est un objet Box avec les coordonnées,
-            # la confiance et la classe
-            # Coordonnées de la boîte de détection
-            x1, y1, x2, y2 = box.xywh[0]
-            conf = box.conf[0]  # Confiance de la détection
-            cls = box.cls[0]  # Classe de l'objet détecté
+            x1, y1, x2, y2 = box.xywh[0]  # Coordonnées de la boîte
+            conf = box.conf[0]  # Confiance
+            cls = box.cls[0]  # Classe détectée
 
-            if (
-                int(cls) == sports_ball_id
-            ):  # Vérifier si l'objet est une balle de tennis
-                print(
-                    f"Balle de tennis detectee a : x1={x1}, y1={y1}, x2={x2}, y2={y2}"
-                )
-                # Dessiner la boîte de détection sur l'image
-                cv2.rectangle(
-                    im0, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2
-                )
+            # Si ce n'est pas une balle de tennis, ignorer
+            if int(cls) != sports_ball_id:
+                continue
+
+            # Afficher uniquement les informations de la balle
+            print(f"Balle de tennis détectée à : x1={x1:.2f}, y1={y1:.2f}, x2={x2:.2f}, y2={y2:.2f}, Confiance={conf:.2f}")
+
+            # Dessiner la boîte de détection sur l'image
+            cv2.rectangle(im0, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
 
     # Afficher l'image avec la détection
     cv2.imshow("Balle de Tennis Détectée", im0)
