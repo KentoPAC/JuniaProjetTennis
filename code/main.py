@@ -1,23 +1,52 @@
 import cv2
-from ultralytics import YOLO
+from roboflow import Roboflow
 import time
 
-# Charger le modèle YOLOv8
-model = YOLO("yolov8n.pt")  # Utiliser le modèle léger pré-entraîné
+# Initialiser l'API Roboflow
+rf = Roboflow(api_key="HGDPPCrv2JXA19Dfds89")
+project = rf.workspace().project("tennis_ball_yolov8-4qhxa-qjgrh")
+model = project.version("1").model
 
 # Charger une vidéo
-cap = cv2.VideoCapture(r"../assets/tennis.mp4")
-assert cap.isOpened(), "Erreur lors de la lecture du fichier "
+video_path = "../assets/tennis.mp4"  # Chemin de votre vidéo
+cap = cv2.VideoCapture(video_path)
+assert cap.isOpened(), "Erreur lors de la lecture du fichier vidéo."
 
-# Paramètres d'optimisation
+# Paramètres pour le traitement vidéo
 resize_dimensions = (640, 480)  # Réduire la résolution pour un traitement rapide
-skip_frames = 2  # Traiter une frame sur 4 pour économiser les ressources
+skip_frames = 2  # Traiter une frame sur 2 pour économiser les ressources
+fps = 5  # Fréquence d'échantillonnage pour l'API Roboflow
 
 frame_count = 0
 start_time = time.time()
 
-# Identifier l'ID de la balle de tennis dans COCO
-sports_ball_id = 32  # ID pour "sports ball"
+# Générer une URL pour la vidéo via l'API
+job_id, signed_url, expire_time = model.predict_video(
+    video_path,
+    fps=fps,
+    prediction_type="batch-video",
+)
+
+print(f"Analyse vidéo en cours (Job ID : {job_id})...")
+
+# Attendre la complétion de l'analyse vidéo
+results = model.poll_until_video_results(job_id)
+print("Analyse terminée.")
+# Ajouter pour vérifier la réponse de l'API
+print("Analyse terminée. Vérification des résultats...")
+
+# Inspecter les résultats
+print("Contenu brut de 'results':", results)
+
+# Vérifier si la clé "predictions" existe
+if "predictions" not in results:
+    print("Erreur : La clé 'predictions' est absente des résultats.")
+    if "error" in results:
+        print("Détails de l'erreur :", results["error"])
+    exit()
+
+# Extraire les prédictions
+predictions = results["predictions"]
 
 while cap.isOpened():
     success, im0 = cap.read()
@@ -29,32 +58,28 @@ while cap.isOpened():
     if frame_count % skip_frames != 0:
         continue
 
-    # Redimensionner la frame
+    # Redimensionner l'image pour correspondre aux dimensions des résultats
     im0 = cv2.resize(im0, resize_dimensions)
 
-    # Détection avec YOLO
-    results = model(im0, verbose=False)  # Désactive les logs YOLO par défaut
+    # Filtrer les résultats pour les balles de tennis
+    for pred in predictions:
+        if pred["class"] == "tennis_ball":  # Vérifier si la classe est "tennis_ball"
+            x = int(pred["x"])  # Coordonnée x du centre
+            y = int(pred["y"])  # Coordonnée y du centre
+            width = int(pred["width"])
+            height = int(pred["height"])
 
-    # Filtrer les résultats pour la balle de tennis (ID 32)
-    for result in results:
-        boxes = result.boxes  # Accéder aux boîtes de détection
+            x1 = int(x - width / 2)
+            y1 = int(y - height / 2)
+            x2 = int(x + width / 2)
+            y2 = int(y + height / 2)
 
-        for box in boxes:
-            x1, y1, x2, y2 = box.xywh[0]  # Coordonnées de la boîte
-            conf = box.conf[0]  # Confiance
-            cls = box.cls[0]  # Classe détectée
-
-            # Si ce n'est pas une balle de tennis, ignorer
-            if int(cls) != sports_ball_id:
-                continue
-
-            # Afficher uniquement les informations de la balle
-            print(f"Balle de tennis détectée à : x1={x1:.2f}, y1={y1:.2f}, x2={x2:.2f}, y2={y2:.2f}, Confiance={conf:.2f}")
+            print(f"Balle de tennis détectée : x1={x1}, y1={y1}, x2={x2}, y2={y2}")
 
             # Dessiner la boîte de détection sur l'image
-            cv2.rectangle(im0, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+            cv2.rectangle(im0, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
-    # Afficher l'image avec la détection
+    # Afficher l'image avec les détections
     cv2.imshow("Balle de Tennis Détectée", im0)
 
     # Appuyer sur "q" pour quitter
