@@ -1,4 +1,5 @@
 import cv2
+import matplotlib.pyplot as plt
 from roboflow import Roboflow
 
 # Initialisation de l'API Roboflow
@@ -7,7 +8,7 @@ project = rf.workspace().project("tennis_ball_yolov8-4qhxa-qjgrh")
 model = project.version("1").model
 
 # Charger l'image
-image_path = "../assets/balle_haute.png"  # Chemin de l'image
+image_path = "../assets/balle_devant_filet.png"  # Chemin de l'image
 image = cv2.imread(image_path)
 assert image is not None, "Erreur : Impossible de charger l'image."
 
@@ -48,12 +49,16 @@ if "predictions" in results:
 else:
     print("Aucune balle détectée dans l'image.")
 
+# Convertir l'image BGR en RGB pour un affichage correct avec Matplotlib
+image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
 # Sauvegarder l'image annotée
 output_path = "photo_annotated.png"
 cv2.imwrite(output_path, image)
 print(f"Image annotée sauvegardée sous : {output_path}")
 
-# Afficher l'image annotée
-cv2.imshow("Résultat", image)
-cv2.waitKey(0)
-cv2.destroyAllWindows()
+# Afficher l'image annotée avec Matplotlib
+plt.imshow(image_rgb)
+plt.axis("off")
+plt.title("Résultat")
+plt.show()
