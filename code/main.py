@@ -1,33 +1,38 @@
 import cv2
 import matplotlib.pyplot as plt
-from roboflow import Roboflow
+from ultralytics import YOLO
+import os
+
+output_path = "photo_annotated.png"
+if os.path.exists(output_path):
+  os.remove(output_path)
+  print(f"Fichier existant '{output_path}' supprimé.")
 
 # Initialisation de l'API Roboflow
-rf = Roboflow(api_key="HGDPPCrv2JXA19Dfds89")
-project = rf.workspace().project("tennis_ball_yolov8-4qhxa-qjgrh")
-model = project.version("1").model
+model_path = "../code/best.pt"
+model = YOLO(model_path)
 
 # Charger l'image
-image_path = "../assets/balle_devant_filet.png"  # Chemin de l'image
+image_path = "../assets/balle_dessus_filet .png"  # Chemin de l'image
 image = cv2.imread(image_path)
 assert image is not None, "Erreur : Impossible de charger l'image."
 
 # Envoyer l'image pour analyse
 print("Analyse de l'image en cours...")
-results = model.predict(image_path, confidence=40, overlap=30).json()
+results = model.predict(image_path, conf=0.4, iou=0.3)
 
 # Vérifier si des prédictions existent
-if "predictions" in results:
-    for prediction in results["predictions"]:
+if results and results[0].boxes:
+    for box in results[0].boxes:
         # Récupérer les coordonnées du rectangle de détection
         x, y, width, height = (
-            prediction["x"],
-            prediction["y"],
-            prediction["width"],
-            prediction["height"],
+            box.xywh[0][0].item(),
+            box.xywh[0][1].item(),
+            box.xywh[0][2].item(),
+            box.xywh[0][3].item(),
         )
-        conf = prediction["confidence"]
-        label = prediction["class"]
+        conf = box.conf.item()
+        label = box.cls.item()
 
         # Calcul des coins du rectangle
         x1 = int(x - width / 2)
@@ -62,3 +67,4 @@ plt.imshow(image_rgb)
 plt.axis("off")
 plt.title("Résultat")
 plt.show()
+
