@@ -13,7 +13,7 @@ model_path = "../code/best.pt"
 model = YOLO(model_path)
 
 # Charger l'image
-image_path = "../assets/balle_dessus_filet .png"  # Chemin de l'image
+image_path = "../Photo_Prise_en_classe/Try2.jpg"  # Chemin de l'image
 image = cv2.imread(image_path)
 assert image is not None, "Erreur : Impossible de charger l'image."
 
