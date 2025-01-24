@@ -1,2 +1,1 @@
-# JuniaProjetTennis
-Bonjour, ceci est le repo du projet de Tennis de JUNIA!
+Cette branche permet de traiter un bloc de photo pour la détection de balle
