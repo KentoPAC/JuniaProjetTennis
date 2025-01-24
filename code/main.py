@@ -1,70 +1,63 @@
 import cv2
-import matplotlib.pyplot as plt
 from ultralytics import YOLO
 import os
-
-output_path = "photo_annotated.png"
-if os.path.exists(output_path):
-  os.remove(output_path)
-  print(f"Fichier existant '{output_path}' supprimé.")
+import json
 
 # Initialisation de l'API Roboflow
-model_path = "../code/best.pt"
+model_path = "../code/best.pt"  # Modifiez le chemin si nécessaire
 model = YOLO(model_path)
 
-# Charger l'image
-image_path = "../assets/balle_dessus_filet .png"  # Chemin de l'image
-image = cv2.imread(image_path)
-assert image is not None, "Erreur : Impossible de charger l'image."
+# Liste des chemins des images à traiter (exemple avec 10 images)
+image_paths = [
+    f"../images/image_{i}.png" for i in range(1, 14)
+]
 
-# Envoyer l'image pour analyse
-print("Analyse de l'image en cours...")
-results = model.predict(image_path, conf=0.4, iou=0.3)
+# Structure pour stocker les résultats
+results_json = {}
 
-# Vérifier si des prédictions existent
-if results and results[0].boxes:
-    for box in results[0].boxes:
-        # Récupérer les coordonnées du rectangle de détection
-        x, y, width, height = (
-            box.xywh[0][0].item(),
-            box.xywh[0][1].item(),
-            box.xywh[0][2].item(),
-            box.xywh[0][3].item(),
-        )
-        conf = box.conf.item()
-        label = box.cls.item()
+# Traiter chaque image
+for image_path in image_paths:
+    # Charger l'image
+    image = cv2.imread(image_path)
+    if image is None:
+        print(f"Erreur : Impossible de charger l'image {image_path}.")
+        continue
 
-        # Calcul des coins du rectangle
-        x1 = int(x - width / 2)
-        y1 = int(y - height / 2)
-        x2 = int(x + width / 2)
-        y2 = int(y + height / 2)
+    # Analyse de l'image
+    results = model.predict(image, conf=0.3, iou=0.2)
 
-        # Dessiner le rectangle autour de la balle
-        cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        cv2.putText(
-            image,
-            f"{label} ({conf:.2f})",
-            (x1, y1 - 10),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            (0, 255, 0),
-            2,
-        )
-else:
-    print("Aucune balle détectée dans l'image.")
+    # Vérifier si des prédictions existent
+    image_results = []
+    if results and results[0].boxes:
+        for box in results[0].boxes:
+            # Récupérer les coordonnées du rectangle de détection
+            x, y, width, height = (
+                box.xywh[0][0].item(),
+                box.xywh[0][1].item(),
+                box.xywh[0][2].item(),
+                box.xywh[0][3].item(),
+            )
+            conf = box.conf.item()
+            label = int(box.cls.item())
 
-# Convertir l'image BGR en RGB pour un affichage correct avec Matplotlib
-image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            # Ajouter les données à la liste des résultats de l'image
+            image_results.append({
+                "label": label,
+                "confidence": conf,
+                "coordinates": {
+                    "x_center": x,
+                    "y_center": y,
+                    "width": width,
+                    "height": height
+                }
+            })
 
-# Sauvegarder l'image annotée
-output_path = "photo_annotated.png"
-cv2.imwrite(output_path, image)
-print(f"Image annotée sauvegardée sous : {output_path}")
+    # Sauvegarder les résultats pour cette image
+    results_json[os.path.basename(image_path)] = image_results
 
-# Afficher l'image annotée avec Matplotlib
-plt.imshow(image_rgb)
-plt.axis("off")
-plt.title("Résultat")
-plt.show()
+# Sauvegarder tous les résultats dans un fichier JSON
+output_json_path = "detection_results.json"
+with open(output_json_path, "w") as json_file:
+    json.dump(results_json, json_file, indent=4)
 
+print(f"Résultats enregistrés dans le fichier : {output_json_path}")
