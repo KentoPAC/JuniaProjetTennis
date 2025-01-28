@@ -21,7 +21,7 @@ model_path = "../code/best.pt"
 model = YOLO(model_path)
 
 # Activer la capture vidéo en direct à partir de la caméra
-cap = cv2.VideoCapture(0)  # 0 pour la caméra par défaut
+cap = cv2.VideoCapture("udp://127.0.0.1:5000", cv2.CAP_FFMPEG)  # 0 pour la caméra par défaut
 if not cap.isOpened():
     print("Erreur : Impossible d'accéder à la caméra.")
     exit()
