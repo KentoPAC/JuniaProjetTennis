@@ -16,34 +16,24 @@ for file in files_to_delete:
     except Exception as e:
         print(f"Erreur lors de la suppression de {file} : {e}")
 
-
 # Initialisation du modèle YOLO
 model_path = "../code/best.pt"
 model = YOLO(model_path)
 
-# Charger la vidéo
-video_path = "../Vidéos/VideoBallV2.mp4"
-cap = cv2.VideoCapture(video_path)
-
+# Activer la capture vidéo en direct à partir de la caméra
+cap = cv2.VideoCapture(0)  # 0 pour la caméra par défaut
 if not cap.isOpened():
-    print("Erreur : Impossible d'ouvrir la vidéo.")
+    print("Erreur : Impossible d'accéder à la caméra.")
     exit()
 
 frame_counter = 0  # Compteur pour différencier les images sauvegardées
+print("Capture vidéo en direct démarrée. Appuyez sur 'q' pour quitter.")
 
-# Lire les propriétés de la vidéo
-fps = cap.get(cv2.CAP_PROP_FPS)
-total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-print(f"Vidéo chargée : {total_frames} frames à {fps:.2f} FPS.")
-
-# Lecture frame par frame
-while cap.isOpened():
+while True:
     ret, frame = cap.read()
     if not ret:
-        print("Fin de la vidéo ou erreur lors de la lecture.")
+        print("Erreur lors de la capture vidéo.")
         break
-
-    print(f"Traitement de la frame {frame_counter}/{total_frames}...")
 
     # Détection avec YOLO
     results = model.predict(frame, conf=0.4, iou=0.3, verbose=False)
@@ -79,13 +69,18 @@ while cap.isOpened():
         # Sauvegarder l'image annotée dans le dossier /assets/
         output_image_path = os.path.join(output_dir, f"detection_{frame_counter}.png")
         cv2.imwrite(output_image_path, frame)
-    else:
-        print(f"Aucune balle détectée dans la frame {frame_counter}.")
-        pass
+
+    # Afficher la vidéo avec les détections
+    cv2.imshow("Détection en direct", frame)
 
     # Incrémenter le compteur de frames
     frame_counter += 1
 
+    # Quitter si l'utilisateur appuie sur 'q'
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
 # Libérer les ressources
 cap.release()
-print("Traitement terminé.")
+cv2.destroyAllWindows()
+print("Capture vidéo arrêtée.")
