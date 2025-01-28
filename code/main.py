@@ -1,24 +1,33 @@
 import cv2
-import matplotlib.pyplot as plt
 from ultralytics import YOLO
 import os
+import glob
+
+# Chemin du dossier de sauvegarde
+output_dir = "../assets/"
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)  # Crée le dossier s'il n'existe pas
+
+# Supprimer les fichiers existants correspondant au motif "detection_*.png"
+files_to_delete = glob.glob(os.path.join(output_dir, "detection_*.png"))
+for file in files_to_delete:
+    try:
+        os.remove(file)
+    except Exception as e:
+        print(f"Erreur lors de la suppression de {file} : {e}")
+
 
 # Initialisation du modèle YOLO
 model_path = "../code/best.pt"
 model = YOLO(model_path)
 
 # Charger la vidéo
-video_path = "../Vidéos/MatchV1.mp4"
+video_path = "../Vidéos/VideoBallV2.mp4"
 cap = cv2.VideoCapture(video_path)
 
 if not cap.isOpened():
     print("Erreur : Impossible d'ouvrir la vidéo.")
     exit()
-
-# Dossier de sauvegarde
-output_dir = "../assets/"
-if not os.path.exists(output_dir):
-    os.makedirs(output_dir)  # Crée le dossier s'il n'existe pas
 
 frame_counter = 0  # Compteur pour différencier les images sauvegardées
 
@@ -67,13 +76,12 @@ while cap.isOpened():
                 2,
             )
 
-
         # Sauvegarder l'image annotée dans le dossier /assets/
         output_image_path = os.path.join(output_dir, f"detection_{frame_counter}.png")
         cv2.imwrite(output_image_path, frame)
-        print(f"Image détectée et sauvegardée sous : {output_image_path}")
     else:
         print(f"Aucune balle détectée dans la frame {frame_counter}.")
+        pass
 
     # Incrémenter le compteur de frames
     frame_counter += 1
