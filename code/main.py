@@ -2,6 +2,7 @@ import cv2
 from ultralytics import YOLO
 import os
 import glob
+import json
 
 # Chemin du dossier de sauvegarde
 output_dir = "../assets/"
@@ -13,9 +14,8 @@ files_to_delete = glob.glob(os.path.join(output_dir, "detection_*.png"))
 for file in files_to_delete:
     try:
         os.remove(file)
-    except Exception as e:
-        print(f"Erreur lors de la suppression de {file} : {e}")
-
+    except Exception:
+        pass  # Supprime les messages d'erreur pour une console simplifiée
 
 # Initialisation du modèle YOLO
 model_path = "../code/best.pt"
@@ -36,6 +36,15 @@ fps = cap.get(cv2.CAP_PROP_FPS)
 total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 print(f"Vidéo chargée : {total_frames} frames à {fps:.2f} FPS.")
 
+# Fichier JSON pour enregistrer les détections
+output_json_path = os.path.join(output_dir, "detections.json")
+detections_data = {
+    "video": video_path,
+    "fps": fps,
+    "total_frames": total_frames,
+    "detections": []
+}
+
 # Lecture frame par frame
 while cap.isOpened():
     ret, frame = cap.read()
@@ -51,6 +60,12 @@ while cap.isOpened():
     # Vérifier si des objets sont détectés
     if results and results[0].boxes:
         print(f"Balles détectées dans la frame {frame_counter} : {len(results[0].boxes)}")
+
+        detection_info = {
+            "frame": frame_counter,
+            "detections": []
+        }
+
         for box in results[0].boxes:
             # Récupérer les coordonnées du rectangle de détection
             x, y, width, height = (
@@ -64,6 +79,15 @@ while cap.isOpened():
             x2 = int(x + width / 2)
             y2 = int(y + height / 2)
 
+            # Ajouter les coordonnées et la confiance au JSON
+            detection_info["detections"].append({
+                "x1": x1,
+                "y1": y1,
+                "x2": x2,
+                "y2": y2,
+                "confidence": box.conf.item()
+            })
+
             # Dessiner le rectangle autour de la balle
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
             cv2.putText(
@@ -76,15 +100,22 @@ while cap.isOpened():
                 2,
             )
 
+        # Ajouter les détections de la frame au fichier JSON
+        detections_data["detections"].append(detection_info)
+
         # Sauvegarder l'image annotée dans le dossier /assets/
         output_image_path = os.path.join(output_dir, f"detection_{frame_counter}.png")
         cv2.imwrite(output_image_path, frame)
     else:
         print(f"Aucune balle détectée dans la frame {frame_counter}.")
-        pass
 
     # Incrémenter le compteur de frames
     frame_counter += 1
+
+# Sauvegarder les données de détection dans un fichier JSON
+with open(output_json_path, "w") as json_file:
+    json.dump(detections_data, json_file, indent=4)
+print(f"Données de détection sauvegardées dans : {output_json_path}")
 
 # Libérer les ressources
 cap.release()
