@@ -11,16 +11,9 @@ import argparse
 import json
 
 def read_video(path_video):
-    """ Read video file
-    :params
-        path_video: path to video file
-    :return
-        frames: list of video frames
-        fps: frames per second
-    """
+    """ Read video file """
     cap = cv2.VideoCapture(path_video)
     fps = int(cap.get(cv2.CAP_PROP_FPS))
-
     frames = []
     while cap.isOpened():
         ret, frame = cap.read()
@@ -32,14 +25,14 @@ def read_video(path_video):
     return frames, fps
 
 def write_video(imgs_new, fps, path_output_video):
+    if not imgs_new:
+        print("⚠ Erreur : Aucune frame à écrire dans la vidéo finale !")
+        return
     height, width = imgs_new[0].shape[:2]
-    out = cv2.VideoWriter(path_output_video, cv2.VideoWriter_fourcc(*'DIVX'),
-                          fps, (width, height))
-    for num in range(len(imgs_new)):
-        frame = imgs_new[num]
+    out = cv2.VideoWriter(path_output_video, cv2.VideoWriter_fourcc(*'DIVX'), fps, (width, height))
+    for frame in imgs_new:
         out.write(frame)
-    out.release() 
-
+    out.release()
 
 if __name__ == '__main__':
 
@@ -57,22 +50,17 @@ if __name__ == '__main__':
     model.load_state_dict(torch.load(args.model_path, map_location=device))
     model.eval()
 
-    print(device)
+    print(f"Utilisation de {device}")
 
     OUTPUT_WIDTH = 640
     OUTPUT_HEIGHT = 360
     
     frames, fps = read_video(args.input_path)
-    frames_upd = []
-    # Créer une liste pour stocker les données des points
-    frames_points = []
+    all_points = []
 
-    # Boucle pour traiter chaque frame
-    for frame_idx, image in enumerate(tqdm(frames)):
+    for image in tqdm(frames):
         img = cv2.resize(image, (OUTPUT_WIDTH, OUTPUT_HEIGHT))
-        inp = (img.astype(np.float32) / 255.)
-        inp = torch.tensor(np.rollaxis(inp, 2, 0))
-        inp = inp.unsqueeze(0)
+        inp = torch.tensor(np.rollaxis(img.astype(np.float32) / 255., 2, 0)).unsqueeze(0)
 
         out = model(inp.float().to(device))[0]
         pred = F.sigmoid(out).detach().cpu().numpy()
@@ -85,34 +73,58 @@ if __name__ == '__main__':
                 x_pred, y_pred = refine_kps(image, int(y_pred), int(x_pred))
             points.append((x_pred, y_pred))
 
+        # Appliquer homographie sur chaque frame si demandé
         if args.use_homography:
             matrix_trans = get_trans_matrix(points)
             if matrix_trans is not None:
-                points = cv2.perspectiveTransform(refer_kps, matrix_trans)
-                points = [np.squeeze(x) for x in points]
+                points_np = np.array([p for p in points if p is not None], dtype=np.float32).reshape(-1, 1, 2)
+                points_transformed = cv2.perspectiveTransform(points_np, matrix_trans)
+                points = [tuple(np.squeeze(x)) for x in points_transformed]
 
-        # Stocker les coordonnées des points de la frame actuelle
-        frame_data = {
-            "frame": frame_idx,
-            "points": [{"x": int(p[0]), "y": int(p[1])} if p[0] is not None else None for p in points]
-        }
-        frames_points.append(frame_data)
+        all_points.append(points)
 
-        # Dessiner les points et leurs labels sur l'image
-        for j, point in enumerate(points):
-            if point[0] is not None:
-                image = cv2.circle(image, (int(point[0]), int(point[1])),
-                                   radius=0, color=(0, 0, 255), thickness=10)
+    # Convertir en tableau NumPy
+    all_points = np.array(all_points, dtype=object)
+    num_points = 14  
+
+    # Calculer la moyenne des points après l'homographie
+    average_points = []
+    for j in range(num_points):
+        x_vals = [frame[j][0] for frame in all_points if frame[j][0] is not None]
+        y_vals = [frame[j][1] for frame in all_points if frame[j][1] is not None]
+
+        if x_vals and y_vals:
+            avg_x = int(np.mean(x_vals))
+            avg_y = int(np.mean(y_vals))
+            average_points.append((avg_x, avg_y))
+        else:
+            average_points.append(None)
+
+    # Appliquer une homographie sur les points moyens
+    if args.use_homography:
+        avg_points_np = np.array([p for p in average_points if p is not None], dtype=np.float32).reshape(-1, 1, 2)
+        matrix_trans = get_trans_matrix(average_points)
+        if matrix_trans is not None:
+            avg_points_transformed = cv2.perspectiveTransform(avg_points_np, matrix_trans)
+            avg_points_transformed = [tuple(np.squeeze(x)) for x in avg_points_transformed]
+            average_points[:len(avg_points_transformed)] = avg_points_transformed
+
+    # Sauvegarde des points moyens dans un fichier JSON
+    json_filename = "average_points.json"
+    with open(json_filename, "w") as json_file:
+        json.dump({"points": [({"x": p[0], "y": p[1]} if p else None) for p in average_points]}, json_file, indent=4)
+
+    print(f"Points moyens sauvegardés dans {json_filename}")
+
+    # Appliquer les points moyens sur toutes les frames et créer la vidéo finale
+    frames_upd = []
+    for image in frames:
+        for j, point in enumerate(average_points):
+            if point is not None:
+                image = cv2.circle(image, (int(point[0]), int(point[1])), radius=5, color=(0, 255, 0), thickness=10)
                 cv2.putText(image, f"Point {j}", (int(point[0]) + 10, int(point[1]) - 10),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
-        
         frames_upd.append(image)
 
-    # Sauvegarde des points dans un fichier JSON
-    json_filename = "points.json"
-    with open(json_filename, "w") as json_file:
-        json.dump(frames_points, json_file, indent=4)
-
-    print(f"Points sauvegardés dans {json_filename}")
-
     write_video(frames_upd, fps, args.output_path)
+
