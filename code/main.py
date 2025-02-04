@@ -21,7 +21,7 @@ for file in files_to_delete:
         pass  # Supprime les messages d'erreur pour une console simplifiée
 
 # Initialisation du modèle TFLite avec TPU Coral
-model_path = "mobilenet_ssd_v2_coco_quant_postprocess_edgetpu.tflite"  # Modifiez le chemin si nécessaire
+model_path = "best_full_integer_quant_edgetpu.tflite"  # Modifiez le chemin si nécessaire
 interpreter = make_interpreter(model_path)
 interpreter.allocate_tensors()
 
