@@ -9,6 +9,7 @@ from postprocess import postprocess, refine_kps
 from homography import get_trans_matrix, refer_kps
 import argparse
 import json
+from scipy.stats import mode
 
 def read_video(path_video):
     """ Read video file """
@@ -87,44 +88,46 @@ if __name__ == '__main__':
     all_points = np.array(all_points, dtype=object)
     num_points = 14  
 
-    # Calculer la moyenne des points après l'homographie
-    average_points = []
+    # Calculer le mode (point le plus fréquent)
+    most_frequent_points = []
     for j in range(num_points):
         x_vals = [frame[j][0] for frame in all_points if frame[j][0] is not None]
         y_vals = [frame[j][1] for frame in all_points if frame[j][1] is not None]
 
         if x_vals and y_vals:
-            avg_x = int(np.mean(x_vals))
-            avg_y = int(np.mean(y_vals))
-            average_points.append((avg_x, avg_y))
+            # Trouver la valeur la plus fréquente (mode)
+            mode_x = mode(x_vals, keepdims=False).mode
+            mode_y = mode(y_vals, keepdims=False).mode
+
+            most_frequent_points.append((int(mode_x), int(mode_y)))
         else:
-            average_points.append(None)
+            most_frequent_points.append(None)
+
 
     # Appliquer une homographie sur les points moyens
     if args.use_homography:
-        avg_points_np = np.array([p for p in average_points if p is not None], dtype=np.float32).reshape(-1, 1, 2)
-        matrix_trans = get_trans_matrix(average_points)
+        avg_points_np = np.array([p for p in most_frequent_points if p is not None], dtype=np.float32).reshape(-1, 1, 2)
+        matrix_trans = get_trans_matrix(most_frequent_points)
         if matrix_trans is not None:
             avg_points_transformed = cv2.perspectiveTransform(avg_points_np, matrix_trans)
             avg_points_transformed = [tuple(np.squeeze(x)) for x in avg_points_transformed]
-            average_points[:len(avg_points_transformed)] = avg_points_transformed
+            most_frequent_points[:len(avg_points_transformed)] = avg_points_transformed
 
     # Sauvegarde des points moyens dans un fichier JSON
-    json_filename = "average_points.json"
+    json_filename = "most_frequent_points.json"
     with open(json_filename, "w") as json_file:
-        json.dump({"points": [({"x": p[0], "y": p[1]} if p else None) for p in average_points]}, json_file, indent=4)
+        json.dump({"points": [({"x": p[0], "y": p[1]} if p else None) for p in most_frequent_points]}, json_file, indent=4)
 
-    print(f"Points moyens sauvegardés dans {json_filename}")
+    print(f"Points frequent sauvegardés dans {json_filename}")
 
     # Appliquer les points moyens sur toutes les frames et créer la vidéo finale
     frames_upd = []
     for image in frames:
-        for j, point in enumerate(average_points):
+        for j, point in enumerate(most_frequent_points):
             if point is not None:
-                image = cv2.circle(image, (int(point[0]), int(point[1])), radius=5, color=(0, 255, 0), thickness=10)
+                image = cv2.circle(image, (int(point[0]), int(point[1])), radius=1, color=(0, 255, 0), thickness=2)
                 cv2.putText(image, f"Point {j}", (int(point[0]) + 10, int(point[1]) - 10),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
         frames_upd.append(image)
 
     write_video(frames_upd, fps, args.output_path)
-

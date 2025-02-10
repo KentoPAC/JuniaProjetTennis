@@ -33,7 +33,7 @@ def get_trans_matrix(points):
             if dist_median < dist_max:
                 matrix_trans = matrix
                 dist_max = dist_median
-    return matrix_trans 
+    return matrix_trans
 
 
 
