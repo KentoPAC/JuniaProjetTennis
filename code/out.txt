@@ -1,0 +1,646 @@
+﻿
+=== base_trainer.py ===
+import torch.nn.functional as F
+import numpy as np
+
+
+def train(model, train_loader, optimizer, criterion, device, epoch, max_iters=1000):
+    model.train()
+    losses = []
+    max_iters = min(max_iters, len(train_loader))
+
+    for iter_id, batch in enumerate(train_loader):
+        out = model(batch[0].float().to(device))
+        gt_hm_hp = batch[1].float().to(device)
+        loss = criterion(F.sigmoid(out), gt_hm_hp)
+
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+        print('train, epoch = {}, iter_id = {}/{}, loss = {}'.format(epoch, iter_id, max_iters, loss.item()))
+        losses.append(loss.item())
+        if iter_id > max_iters:
+            break
+
+    return np.mean(losses)
+
+
+
+
+
+
+
+=== base_validator.py ===
+import torch
+import numpy as np
+import torch.nn.functional as F
+from utils import is_point_in_image
+from scipy.spatial import distance
+from postprocess import postprocess
+from dataset import courtDataset
+from tracknet import BallTrackerNet
+import argparse
+import torch.nn as nn
+
+def val(model, val_loader, criterion, device, epoch):
+    model.eval()
+    losses = []
+    tp, fp, fn, tn = 0, 0, 0, 0
+    max_dist = 7
+    for iter_id, batch in enumerate(val_loader):
+        with torch.no_grad():
+            batch_size = batch[0].shape[0]
+            out = model(batch[0].float().to(device))
+            kps = batch[2]
+            gt_hm = batch[1].float().to(device)
+            loss = criterion(F.sigmoid(out), gt_hm)
+
+            pred = F.sigmoid(out).detach().cpu().numpy()
+            for bs in range(batch_size):
+                for kps_num in range(14):
+                    heatmap = (pred[bs][kps_num] * 255).astype(np.uint8)
+                    x_pred, y_pred = postprocess(heatmap)
+                    x_gt = kps[bs][kps_num][0].item()
+                    y_gt = kps[bs][kps_num][1].item()
+
+                    if is_point_in_image(x_pred, y_pred) and is_point_in_image(x_gt, y_gt):
+                        dst = distance.euclidean((x_pred, y_pred), (x_gt, y_gt))
+                        if dst < max_dist:
+                            tp += 1
+                        else:
+                            fp += 1
+                    elif is_point_in_image(x_pred, y_pred) and not is_point_in_image(x_gt, y_gt):
+                        fp += 1
+                    elif not is_point_in_image(x_pred, y_pred) and is_point_in_image(x_gt, y_gt):
+                        fn += 1
+                    elif not is_point_in_image(x_pred, y_pred) and not is_point_in_image(x_gt, y_gt):
+                        tn += 1
+
+            eps = 1e-15
+            precision = round(tp / (tp + fp + eps), 5)
+            accuracy = round((tp + tn) / (tp + tn + fp + fn + eps), 5)
+            print('val, epoch = {}, iter_id = {}/{}, loss = {}, tp = {}, fp = {}, fn = {}, tn = {}, precision = {}, '
+                  'accuracy = {}'.format(epoch, iter_id, len(val_loader), round(loss.item(), 5), tp, fp, fn, tn,
+                                         precision, accuracy))
+            losses.append(loss.item())
+    return np.mean(losses), tp, fp, fn, tn, precision, accuracy
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--batch_size', type=int, default=2, help='batch size')
+    parser.add_argument('--model_path', type=str, help='path to pretrained model')
+    args = parser.parse_args()
+
+    val_dataset = courtDataset('val')
+    val_loader = torch.utils.data.DataLoader(
+        val_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=1,
+        pin_memory=True
+    )
+
+    model = BallTrackerNet(out_channels=15)
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model.load_state_dict(torch.load(args.model_path, map_location=device))
+    model = model.to(device)
+    criterion = nn.MSELoss()
+
+    val_loss, tp, fp, fn, tn, precision, accuracy = val(model, val_loader, criterion, device, -1)
+
+
+
+
+
+
+
+=== dataset.py ===
+from torch.utils.data import Dataset
+import os
+import cv2
+import numpy as np
+import json
+from utils import draw_umich_gaussian, line_intersection, is_point_in_image
+
+class courtDataset(Dataset):
+    
+    def __init__(self, mode, input_height=720, input_width=1280, scale=2, hp_radius=55):
+
+        self.mode = mode
+        assert mode in ['train', 'val'], 'incorrect mode'
+        self.input_height = input_height
+        self.input_width = input_width
+        self.output_height = int(input_height/scale)
+        self.output_width = int(input_width/scale)
+        self.num_joints = 14
+        self.hp_radius = hp_radius
+        self.scale = scale
+
+        self.path_dataset = './data'
+        self.path_images = os.path.join(self.path_dataset, 'images')
+        with open(os.path.join(self.path_dataset, 'data_{}.json'.format(mode)), 'r') as f:
+            self.data = json.load(f)
+        print('mode = {}, len = {}'.format(mode, len(self.data)))
+
+
+    def filter_data(self):
+        new_data = []
+        for i in range(len(self.data)):
+            max_elems = np.array(self.data[i]['kps']).max(axis=0)
+            min_elems = np.array(self.data[i]['kps']).min(axis=0)
+            if max_elems[0] < self.input_width and min_elems[0] > 0 and max_elems[1] < self.input_height and \
+                    min_elems[1] > 0:
+                new_data.append(self.data[i])
+        return new_data
+
+        
+    def __getitem__(self, index):
+        img_name = self.data[index]['id'] + '.png'
+        kps = self.data[index]['kps']
+        img = cv2.imread(os.path.join(self.path_images, img_name))
+        img = cv2.resize(img, (self.output_width, self.output_height))
+        inp = (img.astype(np.float32) / 255.)
+        inp = np.rollaxis(inp, 2, 0)
+
+        hm_hp = np.zeros((self.num_joints+1, self.output_height, self.output_width), dtype=np.float32)
+        draw_gaussian = draw_umich_gaussian
+
+        for i in range(len(kps)):
+            if kps[i][0] >=0 and kps[i][0] <= self.input_width and kps[i][1] >=0 and kps[i][1] <= self.input_height:
+            # if is_point_in_image(kps[i][0], kps[i][1], self.input_width, self.input_height):
+                x_pt_int = int(kps[i][0]/self.scale)
+                y_pt_int = int(kps[i][1]/self.scale)
+                draw_gaussian(hm_hp[i], (x_pt_int, y_pt_int), self.hp_radius)
+
+        # draw center point of tennis court
+        x_ct, y_ct = line_intersection((kps[0][0], kps[0][1], kps[3][0], kps[3][1]), (kps[1][0], kps[1][1],
+                                                                                      kps[2][0], kps[2][1]))
+        draw_gaussian(hm_hp[self.num_joints], (int(x_ct/self.scale), int(y_ct/self.scale)), self.hp_radius)
+        
+        return inp, hm_hp, np.array(kps, dtype=int), img_name[:-4]
+        
+        
+    def __len__(self):
+        return len(self.data)
+    
+    
+        
+
+
+
+
+
+
+
+=== main.py ===
+from dataset import courtDataset
+import torch
+import torch.nn as nn
+from base_trainer import train
+from base_validator import val
+import os
+from tensorboardX import SummaryWriter
+from tracknet import BallTrackerNet
+import argparse
+from torch.optim import lr_scheduler
+
+if __name__ == '__main__':
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--batch_size', type=int, default=2, help='batch size')
+    parser.add_argument('--exp_id', type=str, default='default', help='path to saving results')
+    parser.add_argument('--num_epochs', type=int, default=500, help='total training epochs')
+    parser.add_argument('--lr', type=float, default=1e-5, help='learning rate')
+    parser.add_argument('--val_intervals', type=int, default=5, help='number of epochs to run validation')
+    parser.add_argument('--steps_per_epoch', type=int, default=1000, help='number of steps per one epoch')
+    args = parser.parse_args()
+    
+    train_dataset = courtDataset('train')
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=1,
+        pin_memory=True
+    )
+    
+    val_dataset = courtDataset('val')
+    val_loader = torch.utils.data.DataLoader(
+        val_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=1,
+        pin_memory=True
+    )
+
+    model = BallTrackerNet(out_channels=15)
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model = model.to(device)
+
+    exps_path = './exps/{}'.format(args.exp_id)
+    tb_path = os.path.join(exps_path, 'plots')
+    if not os.path.exists(tb_path):
+        os.makedirs(tb_path)
+    log_writer = SummaryWriter(tb_path)
+    model_last_path = os.path.join(exps_path, 'model_last.pt')
+    model_best_path = os.path.join(exps_path, 'model_best.pt')
+
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), args.lr, betas=(0.9, 0.999), weight_decay=0)
+
+    val_best_accuracy = 0
+    for epoch in range(args.num_epochs):
+        train_loss = train(model, train_loader, optimizer, criterion, device, epoch, args.steps_per_epoch)
+        log_writer.add_scalar('Train/training_loss', train_loss, epoch)
+
+        if (epoch > 0) & (epoch % args.val_intervals == 0):
+            val_loss, tp, fp, fn, tn, precision, accuracy = val(model, val_loader, criterion, device, epoch)
+            print('val loss = {}'.format(val_loss))
+            log_writer.add_scalar('Val/loss', val_loss, epoch)
+            log_writer.add_scalar('Val/tp', tp, epoch)
+            log_writer.add_scalar('Val/fp', fp, epoch)
+            log_writer.add_scalar('Val/fn', fn, epoch)
+            log_writer.add_scalar('Val/tn', tn, epoch)
+            log_writer.add_scalar('Val/precision', precision, epoch)
+            log_writer.add_scalar('Val/accuracy', accuracy, epoch)
+            if accuracy > val_best_accuracy:
+                val_best_accuracy = accuracy
+                torch.save(model.state_dict(), model_best_path)     
+            torch.save(model.state_dict(), model_last_path)
+
+
+
+
+
+=== out.txt ===
+
+=== base_trainer.py ===
+import torch.nn.functional as F
+import numpy as np
+
+
+def train(model, train_loader, optimizer, criterion, device, epoch, max_iters=1000):
+    model.train()
+    losses = []
+    max_iters = min(max_iters, len(train_loader))
+
+    for iter_id, batch in enumerate(train_loader):
+        out = model(batch[0].float().to(device))
+        gt_hm_hp = batch[1].float().to(device)
+        loss = criterion(F.sigmoid(out), gt_hm_hp)
+
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+        print('train, epoch = {}, iter_id = {}/{}, loss = {}'.format(epoch, iter_id, max_iters, loss.item()))
+        losses.append(loss.item())
+        if iter_id > max_iters:
+            break
+
+    return np.mean(losses)
+
+
+
+
+
+
+
+=== base_validator.py ===
+import torch
+import numpy as np
+import torch.nn.functional as F
+from utils import is_point_in_image
+from scipy.spatial import distance
+from postprocess import postprocess
+from dataset import courtDataset
+from tracknet import BallTrackerNet
+import argparse
+import torch.nn as nn
+
+def val(model, val_loader, criterion, device, epoch):
+    model.eval()
+    losses = []
+    tp, fp, fn, tn = 0, 0, 0, 0
+    max_dist = 7
+    for iter_id, batch in enumerate(val_loader):
+        with torch.no_grad():
+            batch_size = batch[0].shape[0]
+            out = model(batch[0].float().to(device))
+            kps = batch[2]
+            gt_hm = batch[1].float().to(device)
+            loss = criterion(F.sigmoid(out), gt_hm)
+
+            pred = F.sigmoid(out).detach().cpu().numpy()
+            for bs in range(batch_size):
+                for kps_num in range(14):
+                    heatmap = (pred[bs][kps_num] * 255).astype(np.uint8)
+                    x_pred, y_pred = postprocess(heatmap)
+                    x_gt = kps[bs][kps_num][0].item()
+                    y_gt = kps[bs][kps_num][1].item()
+
+                    if is_point_in_image(x_pred, y_pred) and is_point_in_image(x_gt, y_gt):
+                        dst = distance.euclidean((x_pred, y_pred), (x_gt, y_gt))
+                        if dst < max_dist:
+                            tp += 1
+                        else:
+                            fp += 1
+                    elif is_point_in_image(x_pred, y_pred) and not is_point_in_image(x_gt, y_gt):
+                        fp += 1
+                    elif not is_point_in_image(x_pred, y_pred) and is_point_in_image(x_gt, y_gt):
+                        fn += 1
+                    elif not is_point_in_image(x_pred, y_pred) and not is_point_in_image(x_gt, y_gt):
+                        tn += 1
+
+            eps = 1e-15
+            precision = round(tp / (tp + fp + eps), 5)
+            accuracy = round((tp + tn) / (tp + tn + fp + fn + eps), 5)
+            print('val, epoch = {}, iter_id = {}/{}, loss = {}, tp = {}, fp = {}, fn = {}, tn = {}, precision = {}, '
+                  'accuracy = {}'.format(epoch, iter_id, len(val_loader), round(loss.item(), 5), tp, fp, fn, tn,
+                                         precision, accuracy))
+            losses.append(loss.item())
+    return np.mean(losses), tp, fp, fn, tn, precision, accuracy
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--batch_size', type=int, default=2, help='batch size')
+    parser.add_argument('--model_path', type=str, help='path to pretrained model')
+    args = parser.parse_args()
+
+    val_dataset = courtDataset('val')
+    val_loader = torch.utils.data.DataLoader(
+        val_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=1,
+        pin_memory=True
+    )
+
+    model = BallTrackerNet(out_channels=15)
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model.load_state_dict(torch.load(args.model_path, map_location=device))
+    model = model.to(device)
+    criterion = nn.MSELoss()
+
+    val_loss, tp, fp, fn, tn, precision, accuracy = val(model, val_loader, criterion, device, -1)
+
+
+
+
+
+
+
+=== dataset.py ===
+from torch.utils.data import Dataset
+import os
+import cv2
+import numpy as np
+import json
+from utils import draw_umich_gaussian, line_intersection, is_point_in_image
+
+class courtDataset(Dataset):
+    
+    def __init__(self, mode, input_height=720, input_width=1280, scale=2, hp_radius=55):
+
+        self.mode = mode
+        assert mode in ['train', 'val'], 'incorrect mode'
+        self.input_height = input_height
+        self.input_width = input_width
+        self.output_height = int(input_height/scale)
+        self.output_width = int(input_width/scale)
+        self.num_joints = 14
+        self.hp_radius = hp_radius
+        self.scale = scale
+
+        self.path_dataset = './data'
+        self.path_images = os.path.join(self.path_dataset, 'images')
+        with open(os.path.join(self.path_dataset, 'data_{}.json'.format(mode)), 'r') as f:
+            self.data = json.load(f)
+        print('mode = {}, len = {}'.format(mode, len(self.data)))
+
+
+    def filter_data(self):
+        new_data = []
+        for i in range(len(self.data)):
+            max_elems = np.array(self.data[i]['kps']).max(axis=0)
+            min_elems = np.array(self.data[i]['kps']).min(axis=0)
+            if max_elems[0] < self.input_width and min_elems[0] > 0 and max_elems[1] < self.input_height and \
+                    min_elems[1] > 0:
+                new_data.append(self.data[i])
+        return new_data
+
+        
+    def __getitem__(self, index):
+        img_name = self.data[index]['id'] + '.png'
+        kps = self.data[index]['kps']
+        img = cv2.imread(os.path.join(self.path_images, img_name))
+        img = cv2.resize(img, (self.output_width, self.output_height))
+        inp = (img.astype(np.float32) / 255.)
+        inp = np.rollaxis(inp, 2, 0)
+
+        hm_hp = np.zeros((self.num_joints+1, self.output_height, self.output_width), dtype=np.float32)
+        draw_gaussian = draw_umich_gaussian
+
+        for i in range(len(kps)):
+            if kps[i][0] >=0 and kps[i][0] <= self.input_width and kps[i][1] >=0 and kps[i][1] <= self.input_height:
+            # if is_point_in_image(kps[i][0], kps[i][1], self.input_width, self.input_height):
+                x_pt_int = int(kps[i][0]/self.scale)
+                y_pt_int = int(kps[i][1]/self.scale)
+                draw_gaussian(hm_hp[i], (x_pt_int, y_pt_int), self.hp_radius)
+
+        # draw center point of tennis court
+        x_ct, y_ct = line_intersection((kps[0][0], kps[0][1], kps[3][0], kps[3][1]), (kps[1][0], kps[1][1],
+                                                                                      kps[2][0], kps[2][1]))
+        draw_gaussian(hm_hp[self.num_joints], (int(x_ct/self.scale), int(y_ct/self.scale)), self.hp_radius)
+        
+        return inp, hm_hp, np.array(kps, dtype=int), img_name[:-4]
+        
+        
+    def __len__(self):
+        return len(self.data)
+    
+    
+        
+
+
+
+
+
+
+
+=== main.py ===
+from dataset import courtDataset
+import torch
+import torch.nn as nn
+from base_trainer import train
+from base_validator import val
+import os
+from tensorboardX import SummaryWriter
+from tracknet import BallTrackerNet
+import argparse
+from torch.optim import lr_scheduler
+
+if __name__ == '__main__':
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--batch_size', type=int, default=2, help='batch size')
+    parser.add_argument('--exp_id', type=str, default='default', help='path to saving results')
+    parser.add_argument('--num_epochs', type=int, default=500, help='total training epochs')
+    parser.add_argument('--lr', type=float, default=1e-5, help='learning rate')
+    parser.add_argument('--val_intervals', type=int, default=5, help='number of epochs to run validation')
+    parser.add_argument('--steps_per_epoch', type=int, default=1000, help='number of steps per one epoch')
+    args = parser.parse_args()
+    
+    train_dataset = courtDataset('train')
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=1,
+        pin_memory=True
+    )
+    
+    val_dataset = courtDataset('val')
+    val_loader = torch.utils.data.DataLoader(
+        val_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=1,
+        pin_memory=True
+    )
+
+    model = BallTrackerNet(out_channels=15)
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model = model.to(device)
+
+    exps_path = './exps/{}'.format(args.exp_id)
+    tb_path = os.path.join(exps_path, 'plots')
+    if not os.path.exists(tb_path):
+        os.makedirs(tb_path)
+    log_writer = SummaryWriter(tb_path)
+    model_last_path = os.path.join(exps_path, 'model_last.pt')
+    model_best_path = os.path.join(exps_path, 'model_best.pt')
+
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), args.lr, betas=(0.9, 0.999), weight_decay=0)
+
+    val_best_accuracy = 0
+    for epoch in range(args.num_epochs):
+        train_loss = train(model, train_loader, optimizer, criterion, device, epoch, args.steps_per_epoch)
+        log_writer.add_scalar('Train/training_loss', train_loss, epoch)
+
+        if (epoch > 0) & (epoch % args.val_intervals == 0):
+            val_loss, tp, fp, fn, tn, precision, accuracy = val(model, val_loader, criterion, device, epoch)
+            print('val loss = {}'.format(val_loss))
+            log_writer.add_scalar('Val/loss', val_loss, epoch)
+            log_writer.add_scalar('Val/tp', tp, epoch)
+            log_writer.add_scalar('Val/fp', fp, epoch)
+            log_writer.add_scalar('Val/fn', fn, epoch)
+            log_writer.add_scalar('Val/tn', tn, epoch)
+            log_writer.add_scalar('Val/precision', precision, epoch)
+            log_writer.add_scalar('Val/accuracy', accuracy, epoch)
+            if accuracy > val_best_accuracy:
+                val_best_accuracy = accuracy
+                torch.save(model.state_dict(), model_best_path)     
+            torch.save(model.state_dict(), model_last_path)
+
+
+
+
+
+
+=== tracknet.py ===
+import torch.nn as nn
+import torch
+
+class ConvBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3, pad=1, stride=1, bias=True):
+        super().__init__()
+        self.block = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size, stride=stride, padding=pad, bias=bias),
+            nn.ReLU(),
+            nn.BatchNorm2d(out_channels)
+        )
+
+    def forward(self, x):
+        return self.block(x)
+
+class BallTrackerNet(nn.Module):
+    def __init__(self, out_channels=14):
+        super().__init__()
+        self.out_channels = out_channels
+
+        self.conv1 = ConvBlock(in_channels=3, out_channels=64)
+        self.conv2 = ConvBlock(in_channels=64, out_channels=64)
+        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.conv3 = ConvBlock(in_channels=64, out_channels=128)
+        self.conv4 = ConvBlock(in_channels=128, out_channels=128)
+        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.conv5 = ConvBlock(in_channels=128, out_channels=256)
+        self.conv6 = ConvBlock(in_channels=256, out_channels=256)
+        self.conv7 = ConvBlock(in_channels=256, out_channels=256)
+        self.pool3 = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.conv8 = ConvBlock(in_channels=256, out_channels=512)
+        self.conv9 = ConvBlock(in_channels=512, out_channels=512)
+        self.conv10 = ConvBlock(in_channels=512, out_channels=512)
+        self.ups1 = nn.Upsample(scale_factor=2)
+        self.conv11 = ConvBlock(in_channels=512, out_channels=256)
+        self.conv12 = ConvBlock(in_channels=256, out_channels=256)
+        self.conv13 = ConvBlock(in_channels=256, out_channels=256)
+        self.ups2 = nn.Upsample(scale_factor=2)
+        self.conv14 = ConvBlock(in_channels=256, out_channels=128)
+        self.conv15 = ConvBlock(in_channels=128, out_channels=128)
+        self.ups3 = nn.Upsample(scale_factor=2)
+        self.conv16 = ConvBlock(in_channels=128, out_channels=64)
+        self.conv17 = ConvBlock(in_channels=64, out_channels=64)
+        self.conv18 = ConvBlock(in_channels=64, out_channels=self.out_channels)
+
+        self._init_weights()
+                  
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.conv2(x)    
+        x = self.pool1(x)
+        x = self.conv3(x)
+        x = self.conv4(x)
+        x = self.pool2(x)
+        x = self.conv5(x)
+        x = self.conv6(x)
+        x = self.conv7(x)
+        x = self.pool3(x)
+        x = self.conv8(x)
+        x = self.conv9(x)
+        x = self.conv10(x)
+        x = self.ups1(x)
+        x = self.conv11(x)
+        x = self.conv12(x)
+        x = self.conv13(x)
+        x = self.ups2(x)
+        x = self.conv14(x)
+        x = self.conv15(x)
+        x = self.ups3(x)
+        x = self.conv16(x)
+        x = self.conv17(x)
+        x = self.conv18(x)
+        return x
+    
+    def _init_weights(self):
+        for module in self.modules():
+            if isinstance(module, nn.Conv2d):
+                nn.init.uniform_(module.weight, -0.05, 0.05)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
+
+            elif isinstance(module, nn.BatchNorm2d):
+                nn.init.constant_(module.weight, 1)
+                nn.init.constant_(module.bias, 0)   
+                
+if __name__ == '__main__':
+    device = 'cpu'
+    model = BallTrackerNet().to(device)
+    inp = torch.rand(1, 3, 360, 640)
+    out = model(inp)
+    print('out = {}'.format(out.shape))
+    
+    
