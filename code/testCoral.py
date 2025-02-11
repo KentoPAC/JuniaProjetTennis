@@ -1,10 +1,11 @@
 import cv2
-from ultralytics import YOLO
 import os
 import glob
 import json
-import time  # Importer le module time
-#test
+import time
+import numpy as np
+import tensorflow as tf
+
 # Chemin du dossier de sauvegarde
 output_dir = "../assets/"
 if not os.path.exists(output_dir):
@@ -23,9 +24,12 @@ output_json_path = os.path.join(output_dir, "detections.json")
 if os.path.exists(output_json_path):
     os.remove(output_json_path)
 
-# Initialisation du modèle YOLO
-model_path = "../code/best.pt"
-model = YOLO(model_path)
+# Chemin du modèle TFLite
+model_path = "../code/best_full_integer_quant_edgetpu.tflite"  # Remplace par le chemin vers ton modèle TFLite
+
+# Charger le modèle TFLite
+interpreter = tf.lite.Interpreter(model_path=model_path)
+interpreter.allocate_tensors()
 
 # Charger le flux vidéo de la caméra
 cap = cv2.VideoCapture(0)  # Utiliser l'index 0 pour la première caméra connectée
@@ -64,30 +68,40 @@ while cap.isOpened():
     # Démarrer le timer pour le temps de traitement de la frame
     frame_start_time = time.time()
 
-    # Détection avec YOLO
-    results = model.predict(frame, conf=0.3, iou=0.3, verbose=False)
+    # Prétraiter l'image pour le modèle (mettre à la bonne taille et normaliser les pixels)
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
 
-    # Vérifier si des objets sont détectés
-    if results and results[0].boxes:
-        print(f"Balles détectées dans la frame {frame_counter} : {len(results[0].boxes)}")
+    # Assurer que l'image a la bonne taille pour le modèle
+    input_shape = input_details[0]['shape']
+    input_image = cv2.resize(frame, (input_shape[2], input_shape[1]))  # Ajuster la taille
+    input_image = np.expand_dims(input_image, axis=0)  # Ajouter une dimension pour le batch
+    input_image = np.float32(input_image)  # Assurer le bon type de données
 
-        detection_info = {
-            "frame": frame_counter,
-            "detections": []
-        }
+    # Effectuer une prédiction
+    interpreter.set_tensor(input_details[0]['index'], input_image)
+    interpreter.invoke()
 
-        for box in results[0].boxes:
-            # Récupérer les coordonnées du rectangle de détection
-            x, y, width, height = (
-                box.xywh[0][0].item(),
-                box.xywh[0][1].item(),
-                box.xywh[0][2].item(),
-                box.xywh[0][3].item(),
-            )
-            x1 = int(x - width / 2)
-            y1 = int(y - height / 2)
-            x2 = int(x + width / 2)
-            y2 = int(y + height / 2)
+    # Récupérer les résultats de la détection
+    boxes = interpreter.get_tensor(output_details[0]['index'])[0]  # Boîtes de détection
+    class_ids = interpreter.get_tensor(output_details[1]['index'])[0]  # Identifiants des classes
+    confidences = interpreter.get_tensor(output_details[2]['index'])[0]  # Confiance des prédictions
+
+    detection_info = {
+        "frame": frame_counter,
+        "detections": []
+    }
+
+    # Filtrer les prédictions en fonction de la confiance
+    for i in range(len(boxes)):
+        if confidences[i] > 0.4:  # Seuil de confiance
+            box = boxes[i]
+            class_id = int(class_ids[i])
+            confidence = confidences[i]
+
+            # Calcul des coins du rectangle
+            y1, x1, y2, x2 = box
+            x1, y1, x2, y2 = int(x1 * frame.shape[1]), int(y1 * frame.shape[0]), int(x2 * frame.shape[1]), int(y2 * frame.shape[0])
 
             # Ajouter les coordonnées et la confiance au JSON
             detection_info["detections"].append({
@@ -95,15 +109,15 @@ while cap.isOpened():
                 "y1": y1,
                 "x2": x2,
                 "y2": y2,
-                "confidence": box.conf.item(),
+                "confidence": confidence,
                 "temps_detection": 0  # Placeholder pour le temps de détection
             })
 
-            # Dessiner le rectangle autour de la balle
+            # Dessiner le rectangle autour de l'objet détecté
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
             cv2.putText(
                 frame,
-                f"Balle ({box.conf.item():.2f})",
+                f"Class {class_id} ({confidence:.2f})",
                 (x1, y1 - 10),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.5,
@@ -111,22 +125,20 @@ while cap.isOpened():
                 2,
             )
 
-        # Calculer le temps de traitement de la frame
-        frame_end_time = time.time()
-        frame_processing_time = frame_end_time - frame_start_time
+    # Calculer le temps de traitement de la frame
+    frame_end_time = time.time()
+    frame_processing_time = frame_end_time - frame_start_time
 
-        # Ajouter le temps de détection au JSON
-        for detection in detection_info["detections"]:
-            detection["temps_detection"] = frame_processing_time
+    # Ajouter le temps de détection au JSON
+    for detection in detection_info["detections"]:
+        detection["temps_detection"] = frame_processing_time
 
-        # Ajouter les détections de la frame au fichier JSON
-        detections_data["detections"].append(detection_info)
+    # Ajouter les détections de la frame au fichier JSON
+    detections_data["detections"].append(detection_info)
 
-        # Sauvegarder l'image annotée dans le dossier /assets/
-        output_image_path = os.path.join(output_dir, f"detection_{frame_counter}.png")
-        cv2.imwrite(output_image_path, frame)
-    else:
-        print(f"Aucune balle détectée dans la frame {frame_counter}.")
+    # Sauvegarder l'image annotée dans le dossier /assets/
+    output_image_path = os.path.join(output_dir, f"detection_{frame_counter}.png")
+    cv2.imwrite(output_image_path, frame)
 
     # Incrémenter le compteur de frames
     frame_counter += 1
