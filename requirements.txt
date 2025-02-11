@@ -1,0 +1,6 @@
+numpy<2
+opencv-python
+opencv-python-headless
+matplotlib
+pillow
+tflite-runtime
