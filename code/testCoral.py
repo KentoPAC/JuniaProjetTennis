@@ -18,15 +18,18 @@ def main():
     engine = ClassificationEngine(args.model)
     # Run inference.
     img = Image.open(args.image)
-    for result in engine.classify_with_image(img, top_k=3):
-        print('---------------------------')
-        label_id = result[0]
-        if label_id in labels:
-            if label_id == 853:  # ID 853 corresponds to "tennis ball" in your labels file
+    results = engine.classify_with_image(img, top_k=3)
+    if results:
+        for result in results:
+            print('---------------------------')
+            label_id = result[0]
+            if label_id in labels:
                 print(labels[label_id])
-                print('Score : ', result[1])
-        else:
-            print(f"Label ID {label_id} not found in labels.")
+            else:
+                print(f"Label ID {label_id} not found in labels.")
+            print('Score : ', result[1])
+    else:
+        print("No results found.")
 
 if __name__ == '__main__':
     main()
