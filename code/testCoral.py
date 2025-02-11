@@ -10,6 +10,8 @@ def main():
     parser.add_argument('--label', help='File path of label file.', required=True)
     parser.add_argument(
         '--image', help='File path of the image to be recognized.', required=True)
+    parser.add_argument(
+        '--top_k', type=int, default=3, help='Number of top results to display.')
     args = parser.parse_args()
 
     # Prepare labels.
@@ -18,7 +20,7 @@ def main():
     engine = ClassificationEngine(args.model)
     # Run inference.
     img = Image.open(args.image)
-    results = engine.classify_with_image(img, top_k=3)
+    results = engine.classify_with_image(img, top_k=args.top_k)
     if results:
         for result in results:
             print('---------------------------')
