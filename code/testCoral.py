@@ -4,7 +4,7 @@ import os
 import glob
 import json
 import time  # Importer le module time
-
+#test
 # Chemin du dossier de sauvegarde
 output_dir = "../assets/"
 if not os.path.exists(output_dir):
