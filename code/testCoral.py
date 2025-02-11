@@ -20,8 +20,13 @@ def main():
     img = Image.open(args.image)
     for result in engine.classify_with_image(img, top_k=3):
         print('---------------------------')
-        print(labels[result[0]])
-        print('Score : ', result[1])
+        label_id = result[0]
+        if label_id in labels:
+            if label_id == 36:  # ID 36 corresponds to "sports ball" in coco_labels.txt
+                print(labels[label_id])
+                print('Score : ', result[1])
+        else:
+            print(f"Label ID {label_id} not found in labels.")
 
 if __name__ == '__main__':
     main()
