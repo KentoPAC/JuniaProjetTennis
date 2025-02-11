@@ -22,7 +22,7 @@ def main():
         print('---------------------------')
         label_id = result[0]
         if label_id in labels:
-            if label_id == 36:  # ID 36 corresponds to "sports ball" in coco_labels.txt
+            if label_id == 853:  # ID 853 corresponds to "tennis ball" in your labels file
                 print(labels[label_id])
                 print('Score : ', result[1])
         else:
