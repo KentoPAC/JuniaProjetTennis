@@ -3,67 +3,69 @@ from ultralytics import YOLO
 import os
 import glob
 import json
-
-# Vérifier si le TPU Coral est détecté
-if not os.path.exists("/dev/apex_0"):
-    print("Erreur : TPU Coral non détecté. Vérifie la connexion.")
-    exit()
+import time  # Importer le module time
 
 # Chemin du dossier de sauvegarde
-output_dir = "../assets"
+output_dir = "../assets/"
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)  # Crée le dossier s'il n'existe pas
 
-# Supprimer les anciens fichiers
+# Supprimer les fichiers existants correspondant au motif "detection_*.png"
 files_to_delete = glob.glob(os.path.join(output_dir, "detection_*.png"))
 for file in files_to_delete:
     try:
         os.remove(file)
     except Exception:
-        pass  # Évite d'afficher des erreurs inutiles
+        pass  # Supprime les messages d'erreur pour une console simplifiée
 
-# Initialisation du modèle YOLO pour TPU Coral
-model_path = "/home/pi/best_edgetpu.tflite"
-model = YOLO(model_path)  # Suppression de "backend=opencv"
+# Supprimer le fichier detections.json s'il existe
+output_json_path = os.path.join(output_dir, "detections.json")
+if os.path.exists(output_json_path):
+    os.remove(output_json_path)
 
-# Charger la vidéo
-video_path = "../Vidéos/VideoBallV2.mp4"
-cap = cv2.VideoCapture(video_path)
+# Initialisation du modèle YOLO
+model_path = "../code/best.pt"
+model = YOLO(model_path)
+
+# Charger le flux vidéo de la caméra
+cap = cv2.VideoCapture(0)  # Utiliser l'index 0 pour la première caméra connectée
 
 if not cap.isOpened():
-    print("Erreur : Impossible d'ouvrir la vidéo.")
+    print("Erreur : Impossible d'ouvrir la caméra.")
     exit()
 
-frame_counter = 0  # Compteur pour les images sauvegardées
+frame_counter = 0  # Compteur pour différencier les images sauvegardées
 
-# Lire les propriétés de la vidéo
+# Lire les propriétés de la caméra
 fps = cap.get(cv2.CAP_PROP_FPS)
-total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-print(f"Vidéo chargée : {total_frames} frames à {fps:.2f} FPS.")
+print(f"Flux vidéo en direct à {fps:.2f} FPS.")
 
 # Fichier JSON pour enregistrer les détections
-output_json_path = os.path.join(output_dir, "detections.json")
 detections_data = {
-    "video": video_path,
+    "video": "Flux vidéo en direct",
     "fps": fps,
-    "total_frames": total_frames,
+    "total_frames": 0,  # Le nombre total de frames n'est pas connu à l'avance pour un flux en direct
+    "duree_total": 0,  # Temps total de traitement
     "detections": []
 }
+
+# Démarrer le timer pour le temps total de traitement
+start_time = time.time()
 
 # Lecture frame par frame
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
-        print("Fin de la vidéo ou erreur lors de la lecture.")
+        print("Erreur lors de la lecture du flux vidéo.")
         break
 
-    print(f"Traitement de la frame {frame_counter}/{total_frames}...")
+    print(f"Traitement de la frame {frame_counter}...")
 
-    # Prétraitement de l'image pour le TPU Coral
-    blob = cv2.dnn.blobFromImage(frame, size=(320, 320), swapRB=True, crop=False)
+    # Démarrer le timer pour le temps de traitement de la frame
+    frame_start_time = time.time()
 
     # Détection avec YOLO
-    results = model.predict(blob, conf=0.4, iou=0.3, verbose=False)
+    results = model.predict(frame, conf=0.3, iou=0.3, verbose=False)
 
     # Vérifier si des objets sont détectés
     if results and results[0].boxes:
@@ -93,7 +95,8 @@ while cap.isOpened():
                 "y1": y1,
                 "x2": x2,
                 "y2": y2,
-                "confidence": box.conf.item()
+                "confidence": box.conf.item(),
+                "temps_detection": 0  # Placeholder pour le temps de détection
             })
 
             # Dessiner le rectangle autour de la balle
@@ -108,6 +111,14 @@ while cap.isOpened():
                 2,
             )
 
+        # Calculer le temps de traitement de la frame
+        frame_end_time = time.time()
+        frame_processing_time = frame_end_time - frame_start_time
+
+        # Ajouter le temps de détection au JSON
+        for detection in detection_info["detections"]:
+            detection["temps_detection"] = frame_processing_time
+
         # Ajouter les détections de la frame au fichier JSON
         detections_data["detections"].append(detection_info)
 
@@ -120,6 +131,11 @@ while cap.isOpened():
     # Incrémenter le compteur de frames
     frame_counter += 1
 
+# Calculer le temps total de traitement
+end_time = time.time()
+total_processing_time = end_time - start_time
+detections_data["duree_total"] = total_processing_time
+
 # Sauvegarder les données de détection dans un fichier JSON
 with open(output_json_path, "w") as json_file:
     json.dump(detections_data, json_file, indent=4)
@@ -127,5 +143,4 @@ print(f"Données de détection sauvegardées dans : {output_json_path}")
 
 # Libérer les ressources
 cap.release()
-cv2.destroyAllWindows()
 print("Traitement terminé.")
