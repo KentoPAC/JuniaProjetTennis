@@ -1,7 +1,9 @@
 import argparse
-from edgetpu.classification.engine import ClassificationEngine
+import cv2
+from edgetpu.detection.engine import DetectionEngine
 from edgetpu.utils import dataset_utils
 from PIL import Image
+import numpy as np
 
 def main():
     parser = argparse.ArgumentParser()
@@ -12,24 +14,35 @@ def main():
         '--image', help='File path of the image to be recognized.', required=True)
     parser.add_argument(
         '--top_k', type=int, default=3, help='Number of top results to display.')
+    parser.add_argument(
+        '--threshold', type=float, default=0.4, help='Detection threshold.')
     args = parser.parse_args()
 
     # Prepare labels.
     labels = dataset_utils.read_label_file(args.label)
     # Initialize engine.
-    engine = ClassificationEngine(args.model)
+    engine = DetectionEngine(args.model)
     # Run inference.
     img = Image.open(args.image)
-    results = engine.classify_with_image(img, top_k=args.top_k)
+    img_np = np.array(img)
+    results = engine.detect_with_image(img, threshold=args.threshold, top_k=args.top_k, keep_aspect_ratio=True, relative_coord=False)
     if results:
         for result in results:
             print('---------------------------')
-            label_id = result[0]
+            label_id = result.label_id
             if label_id in labels:
                 print(labels[label_id])
             else:
                 print(f"Label ID {label_id} not found in labels.")
-            print('Score : ', result[1])
+            print('Score : ', result.score)
+            box = result.bounding_box.flatten().tolist()
+            print('Bounding box:', box)
+            # Draw rectangle around detected object
+            cv2.rectangle(img_np, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), (0, 255, 0), 2)
+        # Save the annotated image
+        annotated_image = Image.fromarray(img_np)
+        annotated_image.save('annotated_image.jpg')
+        print("Annotated image saved as 'annotated_image.jpg'")
     else:
         print("No results found.")
 
