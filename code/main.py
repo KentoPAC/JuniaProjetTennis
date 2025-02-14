@@ -1,11 +1,9 @@
 import cv2
+from ultralytics import YOLO
 import os
 import glob
 import json
-import numpy as np
-from pycoral.utils.edgetpu import make_interpreter
-from pycoral.adapters.common import input_size
-from pycoral.adapters.detect import get_objects
+import time  # Importer le module time
 
 # Chemin du dossier de sauvegarde
 output_dir = "../assets/"
@@ -19,11 +17,15 @@ for file in files_to_delete:
         os.remove(file)
     except Exception:
         pass  # Supprime les messages d'erreur pour une console simplifiée
+python3 testCoral.py --model ../code/mobilenet_ssd_v2_coco_quant_postprocess_edgetpu.tflite --label ../code/coco_labels.txt --image ../assets/balle_devant_filet.png --top_k 3 --threshold 0.4
+# Supprimer le fichier detections.json s'il existe
+output_json_path = os.path.join(output_dir, "detections.json")
+if os.path.exists(output_json_path):
+    os.remove(output_json_path)
 
-# Initialisation du modèle TFLite avec TPU Coral
-model_path = "best_full_integer_quant_edgetpu.tflite"  # Modifiez le chemin si nécessaire
-interpreter = make_interpreter(model_path)
-interpreter.allocate_tensors()
+# Initialisation du modèle YOLO
+model_path = "../code/best.pt"
+model = YOLO(model_path)
 
 # Charger la vidéo
 video_path = "../Vidéos/VideoBallV2.mp4"
@@ -41,13 +43,16 @@ total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 print(f"Vidéo chargée : {total_frames} frames à {fps:.2f} FPS.")
 
 # Fichier JSON pour enregistrer les détections
-output_json_path = os.path.join(output_dir, "detections.json")
 detections_data = {
     "video": video_path,
     "fps": fps,
     "total_frames": total_frames,
+    "duree_total": 0,  # Temps total de traitement
     "detections": []
 }
+
+# Démarrer le timer pour le temps total de traitement
+start_time = time.time()
 
 # Lecture frame par frame
 while cap.isOpened():
@@ -58,29 +63,33 @@ while cap.isOpened():
 
     print(f"Traitement de la frame {frame_counter}/{total_frames}...")
 
-    # Prétraitement de l'image
-    input_shape = input_size(interpreter)
-    resized_frame = cv2.resize(frame, input_shape)
-    resized_frame = cv2.cvtColor(resized_frame, cv2.COLOR_BGR2RGB)
-    resized_frame = np.expand_dims(resized_frame, axis=0)
+    # Démarrer le timer pour le temps de traitement de la frame
+    frame_start_time = time.time()
 
-    # Détection avec TFLite et TPU Coral
-    interpreter.set_tensor(interpreter.get_input_details()[0]['index'], resized_frame)
-    interpreter.invoke()
-    objs = get_objects(interpreter, 0.4)  # Confiance minimale de 0.4
+    # Détection avec YOLO
+    results = model.predict(frame, conf=0.3, iou=0.3, verbose=False)
 
     # Vérifier si des objets sont détectés
-    if objs:
-        print(f"Balles détectées dans la frame {frame_counter} : {len(objs)}")
+    if results and results[0].boxes:
+        print(f"Balles détectées dans la frame {frame_counter} : {len(results[0].boxes)}")
 
         detection_info = {
             "frame": frame_counter,
             "detections": []
         }
 
-        for obj in objs:
-            bbox = obj.bbox
-            x1, y1, x2, y2 = bbox.xmin, bbox.ymin, bbox.xmax, bbox.ymax
+        for box in results[0].boxes:
+            # Récupérer les coordonnées du rectangle de détection
+            x, y, width, height = (
+                box.xywh[0][0].item(),
+                box.xywh[0][1].item(),
+                box.xywh[0][2].item(),
+                box.xywh[0][3].item(),
+            )
+            x1 = int(x - width / 2)
+            y1 = int(y - height / 2)
+            x2 = int(x + width / 2)
+            y2 = int(y + height / 2)
 
             # Ajouter les coordonnées et la confiance au JSON
             detection_info["detections"].append({
@@ -88,20 +97,29 @@ while cap.isOpened():
                 "y1": y1,
                 "x2": x2,
                 "y2": y2,
-                "confidence": obj.score
+                "confidence": box.conf.item(),
+                "temps_detection": 0  # Placeholder pour le temps de détection
             })
 
             # Dessiner le rectangle autour de la balle
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
             cv2.putText(
                 frame,
-                f"Balle ({obj.score:.2f})",
+                f"Balle ({box.conf.item():.2f})",
                 (x1, y1 - 10),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.5,
                 (0, 255, 0),
                 2,
             )
+
+        # Calculer le temps de traitement de la frame
+        frame_end_time = time.time()
+        frame_processing_time = frame_end_time - frame_start_time
+
+        # Ajouter le temps de détection au JSON
+        for detection in detection_info["detections"]:
+            detection["temps_detection"] = frame_processing_time
 
         # Ajouter les détections de la frame au fichier JSON
         detections_data["detections"].append(detection_info)
@@ -114,6 +132,11 @@ while cap.isOpened():
 
     # Incrémenter le compteur de frames
     frame_counter += 1
+
+# Calculer le temps total de traitement
+end_time = time.time()
+total_processing_time = end_time - start_time
+detections_data["duree_total"] = total_processing_time
 
 # Sauvegarder les données de détection dans un fichier JSON
 with open(output_json_path, "w") as json_file:

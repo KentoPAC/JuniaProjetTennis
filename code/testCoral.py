@@ -44,8 +44,9 @@ def main():
         annotated_image = Image.fromarray(img_np)
         annotated_image = annotated_image.convert("RGB")  # Convert to RGB mode
         os.makedirs('assets', exist_ok=True)  # Create the assets directory if it doesn't exist
-        annotated_image.save('assets/annotated_image.jpg')
-        print("Annotated image saved as 'assets/annotated_image.jpg'")
+        save_path = os.path.join('assets', 'annotated_image.jpg')
+        annotated_image.save(save_path)
+        print(f"Annotated image saved as '{save_path}'")
     else:
         print("No results found.")
 
