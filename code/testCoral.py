@@ -4,6 +4,7 @@ from edgetpu.detection.engine import DetectionEngine
 from edgetpu.utils import dataset_utils
 from PIL import Image
 import numpy as np
+import os
 
 def main():
     parser = argparse.ArgumentParser()
@@ -42,8 +43,9 @@ def main():
         # Save the annotated image
         annotated_image = Image.fromarray(img_np)
         annotated_image = annotated_image.convert("RGB")  # Convert to RGB mode
-        annotated_image.save('annotated_image.jpg')
-        print("Annotated image saved as 'annotated_image.jpg'")
+        os.makedirs('assets', exist_ok=True)  # Create the assets directory if it doesn't exist
+        annotated_image.save('assets/annotated_image.jpg')
+        print("Annotated image saved as 'assets/annotated_image.jpg'")
     else:
         print("No results found.")
 
