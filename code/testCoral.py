@@ -41,6 +41,7 @@ def main():
             cv2.rectangle(img_np, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), (0, 255, 0), 2)
         # Save the annotated image
         annotated_image = Image.fromarray(img_np)
+        annotated_image = annotated_image.convert("RGB")  # Convert to RGB mode
         annotated_image.save('annotated_image.jpg')
         print("Annotated image saved as 'annotated_image.jpg'")
     else:
