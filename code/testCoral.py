@@ -51,8 +51,8 @@ def main():
         annotated_image.save(save_path)
         print(f"Annotated image saved as '{save_path}'")
 
-        # Open the annotated image using feh
-        subprocess.run(['feh', save_path])
+        # Open the annotated image using fim
+        subprocess.run(['fim', save_path])
     else:
         print("No results found.")
 
