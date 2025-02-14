@@ -5,6 +5,8 @@ from edgetpu.utils import dataset_utils
 from PIL import Image
 import numpy as np
 import os
+import subprocess
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -26,7 +28,8 @@ def main():
     # Run inference.
     img = Image.open(args.image)
     img_np = np.array(img)
-    results = engine.detect_with_image(img, threshold=args.threshold, top_k=args.top_k, keep_aspect_ratio=True, relative_coord=False)
+    results = engine.detect_with_image(img, threshold=args.threshold, top_k=args.top_k, keep_aspect_ratio=True,
+                                       relative_coord=False)
     if results:
         for result in results:
             print('---------------------------')
@@ -47,8 +50,12 @@ def main():
         save_path = os.path.join('assets', 'annotated_image.jpg')
         annotated_image.save(save_path)
         print(f"Annotated image saved as '{save_path}'")
+
+        # Open the annotated image using feh
+        subprocess.run(['feh', save_path])
     else:
         print("No results found.")
+
 
 if __name__ == '__main__':
     main()
