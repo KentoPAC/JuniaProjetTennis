@@ -2,7 +2,6 @@ import cv2
 from ultralytics import YOLO
 import os
 import glob
-import json
 import time  # Importer le module time
 
 # Chemin du dossier de sauvegarde
@@ -17,11 +16,6 @@ for file in files_to_delete:
         os.remove(file)
     except Exception:
         pass  # Supprime les messages d'erreur pour une console simplifiée
-python3 testCoral.py --model ../code/mobilenet_ssd_v2_coco_quant_postprocess_edgetpu.tflite --label ../code/coco_labels.txt --image ../assets/balle_devant_filet.png --top_k 3 --threshold 0.4
-# Supprimer le fichier detections.json s'il existe
-output_json_path = os.path.join(output_dir, "detections.json")
-if os.path.exists(output_json_path):
-    os.remove(output_json_path)
 
 # Initialisation du modèle YOLO
 model_path = "../code/best.pt"
@@ -91,14 +85,15 @@ while cap.isOpened():
             x2 = int(x + width / 2)
             y2 = int(y + height / 2)
 
+            # Affichage en console
+            print(f"  -> Balle détectée : x={x}, y={y} confiance={box.conf.item():.2f}")
+
             # Ajouter les coordonnées et la confiance au JSON
             detection_info["detections"].append({
-                "x1": x1,
-                "y1": y1,
-                "x2": x2,
-                "y2": y2,
+                "x": int(x),
+                "y": int(y),
                 "confidence": box.conf.item(),
-                "temps_detection": 0  # Placeholder pour le temps de détection
+                "temps_detection": 0
             })
 
             # Dessiner le rectangle autour de la balle
@@ -137,11 +132,6 @@ while cap.isOpened():
 end_time = time.time()
 total_processing_time = end_time - start_time
 detections_data["duree_total"] = total_processing_time
-
-# Sauvegarder les données de détection dans un fichier JSON
-with open(output_json_path, "w") as json_file:
-    json.dump(detections_data, json_file, indent=4)
-print(f"Données de détection sauvegardées dans : {output_json_path}")
 
 # Libérer les ressources
 cap.release()
