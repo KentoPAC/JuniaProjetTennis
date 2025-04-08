@@ -46,65 +46,63 @@ while cap.isOpened():
         print("Fin de la vidéo ou erreur lors de la lecture.")
         break
 
-    print(f"Traitement de la frame {frame_counter}/{total_frames}...")
-
     # Démarrer le timer pour le temps de traitement de la frame
     frame_start_time = time.time()
 
     # Détection avec YOLO
     results = model.predict(frame, conf=0.3, iou=0.3, verbose=False)
 
-    # Vérifier si des objets sont détectés
-    if results and results[0].boxes:
+    detection_info = {
+        "frame": frame_counter,
+        "detections": []
+    }
 
-        detection_info = {
-            "frame": frame_counter,
-            "detections": []
-        }
+    for box in results[0].boxes:
+        # Récupérer les coordonnées du rectangle de détection
+        x, y, width, height = (
+            box.xywh[0][0].item(),
+            box.xywh[0][1].item(),
+            box.xywh[0][2].item(),
+            box.xywh[0][3].item(),
+        )
 
-        for box in results[0].boxes:
-            # Récupérer les coordonnées du rectangle de détection
-            x, y, width, height = (
-                box.xywh[0][0].item(),
-                box.xywh[0][1].item(),
-                box.xywh[0][2].item(),
-                box.xywh[0][3].item(),
-            )
-            x1 = int(x - width / 2)
-            y1 = int(y - height / 2)
-            x2 = int(x + width / 2)
-            y2 = int(y + height / 2)
+        # Affichage des coordonnées du centre de la balle et de la confiance
+        print(f"  -> Balle détectée : x={x}, y={y} ")
 
-            print(f"  -> Balle détectée : x={x}, y={y} confiance={box.conf.item():.2f}")
+        # Dessiner un cercle autour du centre de la balle
+        cv2.circle(frame, (int(x), int(y)), 5, (0, 255, 0), -1)
+        cv2.putText(
+            frame,
+            f"Balle ({box.conf.item():.2f})",
+            (int(x), int(y) - 10),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (0, 255, 0),
+            2,
+        )
 
-            # Dessiner le rectangle autour de la balle
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            cv2.putText(
-                frame,
-                f"Balle ({box.conf.item():.2f})",
-                (x1, y1 - 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (0, 255, 0),
-                2,
-            )
+        # Ajouter la détection dans le fichier JSON
+        detection_info["detections"].append({
+            "x": int(x),
+            "y": int(y),
+            "confidence": box.conf.item(),
+            "temps_detection": 0  # Placeholder pour le temps de détection
+        })
 
-        # Calculer le temps de traitement de la frame
-        frame_end_time = time.time()
-        frame_processing_time = frame_end_time - frame_start_time
+    # Calculer le temps de traitement de la frame
+    frame_end_time = time.time()
+    frame_processing_time = frame_end_time - frame_start_time
 
-        # Ajouter le temps de détection au JSON
-        for detection in detection_info["detections"]:
-            detection["temps_detection"] = frame_processing_time
+    # Ajouter le temps de détection au JSON
+    for detection in detection_info["detections"]:
+        detection["temps_detection"] = frame_processing_time
 
-        # Ajouter les détections de la frame au fichier JSON
-        detections_data["detections"].append(detection_info)
+    # Ajouter les détections de la frame au fichier JSON
+    detections_data["detections"].append(detection_info)
 
-        # Sauvegarder l'image annotée dans le dossier /assets/
-        output_image_path = os.path.join(output_dir, f"detection_{frame_counter}.png")
-        cv2.imwrite(output_image_path, frame)
-    else:
-        print(f"Aucune balle détectée dans la frame {frame_counter}.")
+    # Sauvegarder l'image annotée dans le dossier /assets/
+    output_image_path = os.path.join(output_dir, f"detection_{frame_counter}.png")
+    cv2.imwrite(output_image_path, frame)
 
     # Incrémenter le compteur de frames
     frame_counter += 1
