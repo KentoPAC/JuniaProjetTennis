@@ -4,16 +4,16 @@ import os
 import time  # Importer le module time
 
 # Chemin du dossier de sauvegarde
-output_dir = "../assets/"
+output_dir = "../../assets/"
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
 # Initialisation du modèle YOLO
-model_path = "../code/best.pt"
+model_path = "best.pt"
 model = YOLO(model_path)
 
 # Charger la vidéo
-video_path = "../Vidéos/VideoBallV2.mp4"
+video_path = "../../Vidéos/VideoBallV2.mp4"
 cap = cv2.VideoCapture(video_path)
 
 if not cap.isOpened():

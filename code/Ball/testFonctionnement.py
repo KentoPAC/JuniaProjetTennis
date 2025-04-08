@@ -3,11 +3,11 @@ import cv2
 import tflite_runtime.interpreter as tfi
 
 # Charger le modèle TFLite
-interpreter = tfi.Interpreter(model_path="../code/best_full_integer_quant_edgetpu.tflite")
+interpreter = tfi.Interpreter(model_path="best_full_integer_quant_edgetpu.tflite")
 interpreter.allocate_tensors()
 
 # Prétraiter l'image
-image = cv2.imread("../assets/balle_dessus_filet .png")
+image = cv2.imread("../../assets/balle_dessus_filet .png")
 image = cv2.resize(image, (224, 224))  # Adapter la taille à celle du modèle
 image = np.expand_dims(image, axis=0).astype(np.float32) / 255.0  # Normaliser
 
