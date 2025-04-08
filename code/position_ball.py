@@ -59,7 +59,7 @@ while cap.isOpened():
 
     for box in results[0].boxes:
         # Récupérer les coordonnées du rectangle de détection
-        x, y, width, height = (
+        Ball_X, Balle_Y, width, height = (
             box.xywh[0][0].item(),
             box.xywh[0][1].item(),
             box.xywh[0][2].item(),
@@ -67,14 +67,14 @@ while cap.isOpened():
         )
 
         # Affichage des coordonnées du centre de la balle et de la confiance
-        print(f"  -> Balle détectée : x={x}, y={y} ")
+        print(f"  -> Balle détectée : x={Ball_X}, y={Balle_Y} ")
 
         # Dessiner un cercle autour du centre de la balle
-        cv2.circle(frame, (int(x), int(y)), 5, (0, 255, 0), -1)
+        cv2.circle(frame, (int(Ball_X), int(Balle_Y)), 5, (0, 255, 0), -1)
         cv2.putText(
             frame,
             f"Balle ({box.conf.item():.2f})",
-            (int(x), int(y) - 10),
+            (int(Ball_X), int(Balle_Y) - 10),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.5,
             (0, 255, 0),
@@ -83,8 +83,8 @@ while cap.isOpened():
 
         # Ajouter la détection dans le fichier JSON
         detection_info["detections"].append({
-            "x": int(x),
-            "y": int(y),
+            "Ball_X": int(Ball_X),
+            "Ball_Y": int(Balle_Y),
             "confidence": box.conf.item(),
             "temps_detection": 0  # Placeholder pour le temps de détection
         })
