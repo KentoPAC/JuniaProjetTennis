@@ -6,7 +6,7 @@ import time  # Importer le module time
 # Chemin du dossier de sauvegarde
 output_dir = "../assets/"
 if not os.path.exists(output_dir):
-    os.makedirs(output_dir)  # Crée le dossier s'il n'existe pas
+    os.makedirs(output_dir)
 
 # Initialisation du modèle YOLO
 model_path = "../code/best.pt"
@@ -56,7 +56,6 @@ while cap.isOpened():
 
     # Vérifier si des objets sont détectés
     if results and results[0].boxes:
-        print(f"Balles détectées dans la frame {frame_counter} : {len(results[0].boxes)}")
 
         detection_info = {
             "frame": frame_counter,
@@ -76,16 +75,7 @@ while cap.isOpened():
             x2 = int(x + width / 2)
             y2 = int(y + height / 2)
 
-            # Affichage en console
             print(f"  -> Balle détectée : x={x}, y={y} confiance={box.conf.item():.2f}")
-
-            # Ajouter les coordonnées et la confiance au JSON
-            detection_info["detections"].append({
-                "x": int(x),
-                "y": int(y),
-                "confidence": box.conf.item(),
-                "temps_detection": 0
-            })
 
             # Dessiner le rectangle autour de la balle
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
