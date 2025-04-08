@@ -20,6 +20,7 @@ if not cap.isOpened():
     print("Erreur : Impossible d'ouvrir la vidéo.")
     exit()
 
+
 frame_counter = 0  # Compteur pour différencier les images sauvegardées
 
 # Lire les propriétés de la vidéo
