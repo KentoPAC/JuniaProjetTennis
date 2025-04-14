@@ -16,6 +16,7 @@ model = YOLO(model_path)
 video_path = "../../Vidéos/Test2.mp4"
 cap = cv2.VideoCapture(video_path)
 
+
 if not cap.isOpened():
     print("Erreur : Impossible d'ouvrir la vidéo.")
     exit()
