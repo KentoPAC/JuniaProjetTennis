@@ -52,7 +52,7 @@ while cap.isOpened():
     frame_start_time = time.time()
 
     # Détection avec YOLO
-    results = model.predict(frame, conf=0.3, iou=0.3, verbose=False)
+    results = model.predict(frame, conf=0.15, iou=0.15, verbose=False)
 
     detection_info = {
         "frame": frame_counter,
@@ -102,9 +102,10 @@ while cap.isOpened():
     # Ajouter les détections de la frame au fichier JSON
     detections_data["detections"].append(detection_info)
 
-    # Sauvegarder l'image annotée dans le dossier /assets/
-    output_image_path = os.path.join(output_dir, f"detection_{frame_counter}.png")
-    cv2.imwrite(output_image_path, frame)
+    # Sauvegarder l'image uniquement s'il y a au moins une détection
+    if detection_info["detections"]:
+        output_image_path = os.path.join(output_dir, f"detection_{frame_counter}.png")
+        cv2.imwrite(output_image_path, frame)
 
     # Incrémenter le compteur de frames
     frame_counter += 1
