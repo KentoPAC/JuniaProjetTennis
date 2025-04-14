@@ -1,0 +1,26 @@
+# Ignorer le dossier venv (environnement virtuel)
+venv/
+.VENV/
+env/
+ENV/
+
+# Ignorer les fichiers compilés Python
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+
+# Ignorer les fichiers journaux
+*.log
+
+# Ignorer les fichiers de configuration locaux
+*.env
+*.local
+
+# Ignorer les fichiers spécifiques à des IDE/éditeurs
+.vscode/
+.idea/
+
+# Ignorer les fichiers spécifiques au système
+.DS_Store
+Thumbs.db
