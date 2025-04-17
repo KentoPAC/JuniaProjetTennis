@@ -4,6 +4,7 @@
 import argparse
 import os
 from terrain.infer_in_video import infer_terrain
+from JuniaProjetTennis.code.Ball.position_ball import ball
 
 
 def main():
@@ -39,7 +40,7 @@ def main():
 
     # Détection du terrain
     terrain_json = os.path.join(args.output_dir, "terrain_points.json")
-    print("[1/1] Lancement détection terrain...")
+    print("[1/2] Lancement détection terrain...")
     infer_terrain(
         model_path=args.field_model,
         video_path=args.input_video,
@@ -50,9 +51,17 @@ def main():
     )
     print(f"→ JSON terrain généré dans {terrain_json}")
 
+    
+    
+    
+    
    # Détection de la balle
-
-
+    print("[2/2] Lancement détection balle...")
+    ball(
+         output_dir="../../JuniaProjetTennis/assets/",
+         video_path="../Vidéos/tennis.mp4",
+         model_path="../Ball/best2.pt"
+    )
 
 
     print("Pipeline terrain terminé.")
