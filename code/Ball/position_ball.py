@@ -1,120 +1,118 @@
 import cv2
 from ultralytics import YOLO
 import os
-import time  # Importer le module time
+import time
+import json
+import glob
 
-# Chemin du dossier de sauvegarde
+model_path = "best.pt"
+video_path = "../../Vidéos/Test2.mp4"
 output_dir = "../../assets/"
+output_json = os.path.join(output_dir, "detections.json")
+
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
-# Initialisation du modèle YOLO
-model_path = "best.pt"
+for file in glob.glob(os.path.join(output_dir, "detection_*.png")):
+    os.remove(file)
+
 model = YOLO(model_path)
 
-# Charger la vidéo
-video_path = "../../Vidéos/Test2.mp4"
 cap = cv2.VideoCapture(video_path)
-
-
 if not cap.isOpened():
     print("Erreur : Impossible d'ouvrir la vidéo.")
     exit()
 
-
-frame_counter = 0  # Compteur pour différencier les images sauvegardées
-
-# Lire les propriétés de la vidéo
 fps = cap.get(cv2.CAP_PROP_FPS)
 total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 print(f"Vidéo chargée : {total_frames} frames à {fps:.2f} FPS.")
 
-# Fichier JSON pour enregistrer les détections
 detections_data = {
     "video": video_path,
     "fps": fps,
     "total_frames": total_frames,
-    "duree_total": 0,  # Temps total de traitement
+    "duree_total": 0,
     "detections": []
 }
 
-# Démarrer le timer pour le temps total de traitement
+frame_counter = 0
 start_time = time.time()
 
-# Lecture frame par frame
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
-        print("Fin de la vidéo ou erreur lors de la lecture.")
         break
 
-    # Démarrer le timer pour le temps de traitement de la frame
     frame_start_time = time.time()
 
-    # Détection avec YOLO
+    # Première tentative avec confiance normale
     results = model.predict(frame, conf=0.15, iou=0.15, verbose=False)
+    boxes = results[0].boxes
+
+    # Si aucune détection : retente avec confiance faible
+    if len(boxes) == 0:
+        results = model.predict(frame, conf=0.11, iou=0.15, verbose=False)
+        boxes = results[0].boxes
+
+    # Prendre la meilleure box (la plus confiante)
+    best_box = None
+    best_conf = 0
+    for box in boxes:
+        conf = box.conf.item()
+        if conf > best_conf:
+            best_conf = conf
+            best_box = box
 
     detection_info = {
         "frame": frame_counter,
-        "detections": []
+        "detections": [],
+        "no_detection": False
     }
 
-    for box in results[0].boxes:
-        # Récupérer les coordonnées du rectangle de détection
-        Ball_X, Balle_Y, width, height = (
-            box.xywh[0][0].item(),
-            box.xywh[0][1].item(),
-            box.xywh[0][2].item(),
-            box.xywh[0][3].item(),
+    if best_box:
+        Ball_X, Ball_Y, width, height = (
+            best_box.xywh[0][0].item(),
+            best_box.xywh[0][1].item(),
+            best_box.xywh[0][2].item(),
+            best_box.xywh[0][3].item(),
         )
 
-        # Affichage des coordonnées du centre de la balle et de la confiance
-        print(f"  -> Balle détectée : x={Ball_X}, y={Balle_Y} ")
+        print(f" Balle détectée : x={Ball_X:.2f}, y={Ball_Y:.2f}")
 
-        # Dessiner un cercle autour du centre de la balle
-        cv2.circle(frame, (int(Ball_X), int(Balle_Y)), 5, (0, 255, 0), -1)
+        cv2.circle(frame, (int(Ball_X), int(Ball_Y)), 5, (0, 255, 0), -1)
         cv2.putText(
             frame,
-            f"Balle ({box.conf.item():.2f})",
-            (int(Ball_X), int(Balle_Y) - 10),
+            f"Balle ({best_conf:.2f})",
+            (int(Ball_X), int(Ball_Y) - 10),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.5,
             (0, 255, 0),
             2,
         )
 
-        # Ajouter la détection dans le fichier JSON
+        frame_processing_time = time.time() - frame_start_time
+
         detection_info["detections"].append({
             "Ball_X": int(Ball_X),
-            "Ball_Y": int(Balle_Y),
-            "confidence": box.conf.item(),
-            "temps_detection": 0  # Placeholder pour le temps de détection
+            "Ball_Y": int(Ball_Y),
+            "confidence": best_conf,
+            "temps_detection": frame_processing_time
         })
 
-    # Calculer le temps de traitement de la frame
-    frame_end_time = time.time()
-    frame_processing_time = frame_end_time - frame_start_time
-
-    # Ajouter le temps de détection au JSON
-    for detection in detection_info["detections"]:
-        detection["temps_detection"] = frame_processing_time
-
-    # Ajouter les détections de la frame au fichier JSON
-    detections_data["detections"].append(detection_info)
-
-    # Sauvegarder l'image uniquement s'il y a au moins une détection
-    if detection_info["detections"]:
         output_image_path = os.path.join(output_dir, f"detection_{frame_counter}.png")
         cv2.imwrite(output_image_path, frame)
 
-    # Incrémenter le compteur de frames
+    else:
+        detection_info["no_detection"] = True
+
+    detections_data["detections"].append(detection_info)
     frame_counter += 1
 
-# Calculer le temps total de traitement
-end_time = time.time()
-total_processing_time = end_time - start_time
+cap.release()
+total_processing_time = time.time() - start_time
 detections_data["duree_total"] = total_processing_time
 
-# Libérer les ressources
-cap.release()
-print("Traitement terminé.")
+with open(output_json, "w") as f:
+    json.dump(detections_data, f, indent=4)
+
+print(f"\nTraitement terminé en {total_processing_time:.2f} secondes.")
