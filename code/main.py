@@ -49,6 +49,12 @@ def main():
         use_homography=args.use_homography,
     )
     print(f"→ JSON terrain généré dans {terrain_json}")
+
+   # Détection de la balle
+
+
+
+
     print("Pipeline terrain terminé.")
 
 
