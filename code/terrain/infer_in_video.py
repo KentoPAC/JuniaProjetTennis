@@ -143,8 +143,15 @@ if __name__ == "__main__":
             ]
             most_frequent_points[: len(avg_points_transformed)] = avg_points_transformed
 
-    # Sauvegarde des points moyens dans un fichier JSON
-    json_filename = "most_frequent_points.json"
+    # ----------------------------------------------------
+    # 1) Définir le dossier de sortie
+    output_dir = os.path.join("..", "data")
+    os.makedirs(output_dir, exist_ok=True)  # crée ../data si nécessaire
+
+    # 2) Construire le chemin complet du fichier JSON
+    json_filename = os.path.join(output_dir, "most_frequent_pointsTest.json")
+
+    # 3) Sauvegarder les points dans ce fichier
     with open(json_filename, "w") as json_file:
         json.dump(
             {
@@ -157,8 +164,8 @@ if __name__ == "__main__":
             indent=4,
         )
 
-    print(f"Points frequent sauvegardés dans {json_filename}")
-
+    print(f"Points fréquents sauvegardés dans {json_filename}")
+    # ----------------------------------------------------
     # Appliquer les points moyens sur toutes les frames et créer la vidéo finale
     frames_upd = []
     for image in frames:
