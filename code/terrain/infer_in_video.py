@@ -2,192 +2,145 @@ import os
 import cv2
 import numpy as np
 import torch
-from tracknet import BallTrackerNet
 import torch.nn.functional as F
 from tqdm import tqdm
-from postprocess import postprocess, refine_kps
-from homography import get_trans_matrix, refer_kps
-import argparse
-import json
 from scipy.stats import mode
+import json
 
-# Durée souhaitée en secondes pour la détection
-detection_duration = 5  # par exemple 5 secondes
+from terrain.tracknet import BallTrackerNet
+from terrain.postprocess import postprocess, refine_kps
+from terrain.homography import get_trans_matrix, refer_kps
 
 
 def read_video(path_video):
-    """Read video file"""
+    """Lit la vidéo et renvoie les frames et le fps"""
     cap = cv2.VideoCapture(path_video)
     fps = int(cap.get(cv2.CAP_PROP_FPS))
     frames = []
-    while cap.isOpened():
+    while True:
         ret, frame = cap.read()
-        if ret:
-            frames.append(frame)
-        else:
+        if not ret:
             break
+        frames.append(frame)
     cap.release()
     return frames, fps
 
 
-def write_video(imgs_new, fps, path_output_video):
-    if not imgs_new:
-        print("⚠ Erreur : Aucune frame à écrire dans la vidéo finale !")
+def write_video(imgs, fps, path_output_video):
+    """Écrit une vidéo à partir d'une liste de frames"""
+    if not imgs:
+        print("⚠ Aucune frame à écrire !")
         return
-    height, width = imgs_new[0].shape[:2]
-    out = cv2.VideoWriter(
-        path_output_video, cv2.VideoWriter_fourcc(*"DIVX"), fps, (width, height)
-    )
-    for frame in imgs_new:
-        out.write(frame)
+    h, w = imgs[0].shape[:2]
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    out = cv2.VideoWriter(path_output_video, fourcc, fps, (w, h))
+    for f in imgs:
+        out.write(f)
     out.release()
 
 
-if __name__ == "__main__":
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model_path", type=str, help="path to model")
-    parser.add_argument("--input_path", type=str, help="path to input video")
-    parser.add_argument("--output_path", type=str, help="path to output video")
-    parser.add_argument(
-        "--use_refine_kps",
-        action="store_true",
-        help="whether to use refine kps postprocessing",
-    )
-    parser.add_argument(
-        "--use_homography",
-        action="store_true",
-        help="whether to use homography postprocessing",
-    )
-    args = parser.parse_args()
-
+def infer_terrain(
+    model_path: str,
+    video_path: str,
+    output_json: str,
+    duration: float = 5.0,
+    use_refine_kps: bool = False,
+    use_homography: bool = False,
+) -> list:
+    """
+    Détecte les points clés du terrain et génère :
+      - Un JSON de points les plus fréquents
+      - Une vidéo annotée avec ces points
+    """
+    # Chargement modèle
     model = BallTrackerNet(out_channels=15)
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = model.to(device)
-    model.load_state_dict(torch.load(args.model_path, map_location=device))
+    model.to(device)
+    model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
+    print(f"[Terrain] Device: {device}")
 
-    print(f"Utilisation de {device}")
-
-    OUTPUT_WIDTH = 640
-    OUTPUT_HEIGHT = 360
-
-    frames, fps = read_video(args.input_path)
+    # Lecture vidéo
+    frames, fps = read_video(video_path)
     all_points = []
+    num_frames = int(fps * duration)
+    OUTPUT_W, OUTPUT_H = 640, 360
 
-    # Calcul du nombre de frames à traiter
-    num_detection_frames = int(fps * detection_duration)
+    # Détection sur premières frames
+    for img in tqdm(frames[:num_frames], desc="Terrain Detection"):
+        resized = cv2.resize(img, (OUTPUT_W, OUTPUT_H))
+        inp = torch.tensor(
+            np.rollaxis(resized.astype(np.float32) / 255.0, 2, 0)
+        ).unsqueeze(0)
+        out = model(inp.to(device).float())[0]
+        pred = torch.sigmoid(out).detach().cpu().numpy()
 
-    # Limiter la boucle aux frames correspondant à detection_duration secondes
-    for image in tqdm(frames[:num_detection_frames]):
-        # Traitement de l'image...
-        img = cv2.resize(image, (OUTPUT_WIDTH, OUTPUT_HEIGHT))
-        inp = torch.tensor(np.rollaxis(img.astype(np.float32) / 255.0, 2, 0)).unsqueeze(
-            0
-        )
+        pts = []
+        for k in range(14):
+            heat = (pred[k] * 255).astype(np.uint8)
+            x, y = postprocess(heat, low_thresh=170, max_radius=25)
+            if use_refine_kps and k not in [8, 12, 9] and x and y:
+                x, y = refine_kps(img, int(y), int(x))
+            pts.append((x, y))
 
-        out = model(inp.float().to(device))[0]
-        pred = F.sigmoid(out).detach().cpu().numpy()
+        if use_homography:
+            M = get_trans_matrix(pts)
+            if M is not None:
+                arr = np.array([p for p in pts if p], dtype=np.float32).reshape(
+                    -1, 1, 2
+                )
+                trans = cv2.perspectiveTransform(arr, M)
+                pts = [tuple(np.squeeze(p)) for p in trans]
+        all_points.append(pts)
 
-        points = []
-        for kps_num in range(14):
-            heatmap = (pred[kps_num] * 255).astype(np.uint8)
-            x_pred, y_pred = postprocess(heatmap, low_thresh=170, max_radius=25)
-            if args.use_refine_kps and kps_num not in [8, 12, 9] and x_pred and y_pred:
-                x_pred, y_pred = refine_kps(image, int(y_pred), int(x_pred))
-            points.append((x_pred, y_pred))
-
-        # Appliquer homographie sur chaque frame si demandé
-        if args.use_homography:
-            matrix_trans = get_trans_matrix(points)
-            if matrix_trans is not None:
-                points_np = np.array(
-                    [p for p in points if p is not None], dtype=np.float32
-                ).reshape(-1, 1, 2)
-                points_transformed = cv2.perspectiveTransform(points_np, matrix_trans)
-                points = [tuple(np.squeeze(x)) for x in points_transformed]
-
-        all_points.append(points)
-
-    # Convertir en tableau NumPy
-    all_points = np.array(all_points, dtype=object)
-    num_points = 14
-
-    # Calculer le mode (point le plus fréquent)
-    most_frequent_points = []
-    for j in range(num_points):
-        x_vals = [frame[j][0] for frame in all_points if frame[j][0] is not None]
-        y_vals = [frame[j][1] for frame in all_points if frame[j][1] is not None]
-
-        if x_vals and y_vals:
-            # Trouver la valeur la plus fréquente (mode)
-            mode_x = mode(x_vals, keepdims=False).mode
-            mode_y = mode(y_vals, keepdims=False).mode
-
-            most_frequent_points.append((int(mode_x), int(mode_y)))
+    # Calcul du mode
+    most_freq = []
+    for i in range(14):
+        xs = [f[i][0] for f in all_points if f[i][0] is not None]
+        ys = [f[i][1] for f in all_points if f[i][1] is not None]
+        if xs and ys:
+            mx = mode(xs, keepdims=False).mode
+            my = mode(ys, keepdims=False).mode
+            most_freq.append((int(mx), int(my)))
         else:
-            most_frequent_points.append(None)
+            most_freq.append(None)
 
-    # Appliquer une homographie sur les points moyens
-    if args.use_homography:
-        avg_points_np = np.array(
-            [p for p in most_frequent_points if p is not None], dtype=np.float32
-        ).reshape(-1, 1, 2)
-        matrix_trans = get_trans_matrix(most_frequent_points)
-        if matrix_trans is not None:
-            avg_points_transformed = cv2.perspectiveTransform(
-                avg_points_np, matrix_trans
-            )
-            avg_points_transformed = [
-                tuple(np.squeeze(x)) for x in avg_points_transformed
-            ]
-            most_frequent_points[: len(avg_points_transformed)] = avg_points_transformed
+    # Homographie finale sur point moyens
+    if use_homography:
+        arr = np.array([p for p in most_freq if p], dtype=np.float32).reshape(-1, 1, 2)
+        M = get_trans_matrix(most_freq)
+        if M is not None:
+            trans = cv2.perspectiveTransform(arr, M)
+            most_freq = [tuple(np.squeeze(p)) for p in trans]
 
-    # ----------------------------------------------------
-    # 1) Définir le dossier de sortie
-    output_dir = os.path.join("..", "data")
-    os.makedirs(output_dir, exist_ok=True)  # crée ../data si nécessaire
-
-    # 2) Construire le chemin complet du fichier JSON
-    json_filename = os.path.join(output_dir, "most_frequent_pointsTest.json")
-
-    # 3) Sauvegarder les points dans ce fichier
-    with open(json_filename, "w") as json_file:
+    # Écriture JSON
+    os.makedirs(os.path.dirname(output_json), exist_ok=True)
+    with open(output_json, "w") as jf:
         json.dump(
-            {
-                "points": [
-                    ({"x": p[0], "y": p[1]} if p else None)
-                    for p in most_frequent_points
-                ]
-            },
-            json_file,
+            {"points": [({"x": p[0], "y": p[1]} if p else None) for p in most_freq]},
+            jf,
             indent=4,
         )
+    print(f"[Terrain] JSON saved: {output_json}")
 
-    print(f"Points fréquents sauvegardés dans {json_filename}")
-    # ----------------------------------------------------
-    # Appliquer les points moyens sur toutes les frames et créer la vidéo finale
+    # Génération vidéo annotée
+    annotated_path = os.path.splitext(output_json)[0] + "_annotated.mp4"
     frames_upd = []
-    for image in frames:
-        for j, point in enumerate(most_frequent_points):
-            if point is not None:
-                image = cv2.circle(
-                    image,
-                    (int(point[0]), int(point[1])),
-                    radius=1,
-                    color=(0, 255, 0),
-                    thickness=2,
-                )
+    for img in frames:
+        for idx, p in enumerate(most_freq):
+            if p:
+                cv2.circle(img, (p[0], p[1]), 5, (0, 255, 0), -1)
                 cv2.putText(
-                    image,
-                    f"Point {j}",
-                    (int(point[0]) + 10, int(point[1]) - 10),
+                    img,
+                    f"P{idx}",
+                    (p[0] + 5, p[1] - 5),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.5,
                     (255, 255, 255),
-                    2,
-                    cv2.LINE_AA,
+                    1,
                 )
-        frames_upd.append(image)
+        frames_upd.append(img)
+    write_video(frames_upd, fps, annotated_path)
+    print(f"[Terrain] Video saved: {annotated_path}")
 
-    write_video(frames_upd, fps, args.output_path)
+    return most_freq
