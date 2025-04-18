@@ -78,7 +78,7 @@ while cap.isOpened():
             best_box.xywh[0][1].item(),
         )
 
-        print(f"  ✅ Balle détectée : x={Ball_X:.2f}, y={Ball_Y:.2f}")
+        print(f"  Balle détectée : x={Ball_X:.2f}, y={Ball_Y:.2f}")
 
         # Sauvegarde du point pour la trajectoire
         trajectory_points.append((int(Ball_X), int(Ball_Y)))
@@ -118,14 +118,12 @@ while cap.isOpened():
     detections_data["detections"].append(detection_info)
     frame_counter += 1
 
-# ---------- Fin ----------
 cap.release()
 total_processing_time = time.time() - start_time
 detections_data["duree_total"] = total_processing_time
 
-# ---------- Écriture JSON ----------
 with open(output_json, "w") as f:
     json.dump(detections_data, f, indent=4)
 
-print(f"\n✅ Traitement terminé en {total_processing_time:.2f} secondes.")
-print(f"📝 Fichier JSON enregistré : {output_json}")
+print(f"\nTraitement terminé en {total_processing_time:.2f} secondes.")
+print(f"Fichier JSON enregistré : {output_json}")
