@@ -3,6 +3,7 @@ import plotly.graph_objects as go
 import webbrowser
 import os
 
+
 def main():
     frames = []
     ys = []
@@ -25,9 +26,7 @@ def main():
         return
 
     # Création du graphique interactif sans pandas
-    fig = go.Figure(
-        data=go.Scatter(x=frames, y=ys, mode="lines", name="Y vs Frame")
-    )
+    fig = go.Figure(data=go.Scatter(x=frames, y=ys, mode="lines", name="Y vs Frame"))
 
     # Inverser l'axe Y
     fig.update_yaxes(autorange="reversed")
@@ -35,14 +34,16 @@ def main():
         title="Position Y de la balle en fonction de la frame",
         xaxis_title="Frame",
         yaxis_title="Y (pixels)",
-        margin=dict(l=40, r=40, t=80, b=40)
+        margin=dict(l=40, r=40, t=80, b=40),
     )
 
     # Enregistrer et ouvrir
     out = "y_vs_frame.html"
     fig.write_html(out)
     print(f"Ouverture de {out}…")
-    webbrowser.open("file://" + os.path.realpath(out))
+
+
+print(f"Chemin complet fichier HTML: {os.path.realpath(out)}")
 
 
 if __name__ == "__main__":
