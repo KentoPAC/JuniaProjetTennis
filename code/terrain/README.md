@@ -117,4 +117,3 @@ points = infer_terrain(
    - Meilleure gestion des conditions difficiles
    - Auto-adaptation aux différents styles de terrain
    - Détection de la qualité des points détectés
-```
