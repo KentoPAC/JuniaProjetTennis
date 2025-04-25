@@ -64,27 +64,30 @@ points = infer_terrain(
    - Sortie JSON standardisée
    - Vidéo annotée générée automatiquement
 
-## Faiblesses
+## Considérations de Performance
 
-1. **Performance** :
+1. **Ressources requises** :
    - Nécessite un GPU pour des performances optimales
-   - Traitement séquentiel des frames
-   - Post-traitement potentiellement lent
+   - Post-traitement potentiellement intensif
+   - Utilisation importante de mémoire
 
-2. **Limites de détection** :
+2. **Optimisation des ressources** :
+   - La détection du terrain n'est effectuée qu'une seule fois au début de l'analyse
+   - Les coordonnées sont mémorisées pour toute la durée de la vidéo
+   - Cette approche permet d'économiser significativement les ressources sur le long terme
+
+## Limitations
+
+1. **Limites de détection** :
    - Sensible aux conditions d'éclairage
-   - Peut être perturbé par les mouvements de caméra brusques
    - Difficulté avec les angles extrêmes
+   - La qualité de la détection initiale est cruciale car utilisée pour toute la vidéo
 
-3. **Dépendances** :
+2. **Dépendances** :
    - Nécessite plusieurs bibliothèques (PyTorch, OpenCV, numpy)
    - Modèle pré-entraîné requis
    - Sensible aux versions des dépendances
 
-4. **Rigidité** :
-   - Configuration fixe des points du terrain
-   - Nombre limité de configurations d'homographie
-   - Pas d'adaptation dynamique aux différents types de terrains
 
 ## Recommandations d'utilisation
 
@@ -95,7 +98,6 @@ points = infer_terrain(
 
 2. **Paramètres optimaux** :
    - Activer `use_refine_kps` pour plus de précision
-   - Utiliser `use_homography` si l'angle est important
    - Ajuster la durée selon la qualité de détection
 
 3. **Post-traitement** :
@@ -105,17 +107,13 @@ points = infer_terrain(
 
 ## Extensions possibles
 
-1. **Améliorations techniques** :
-   - Parallélisation du traitement des frames
-   - Optimisation du modèle (quantization, pruning)
-   - Support de formats vidéo supplémentaires
 
-2. **Nouvelles fonctionnalités** :
+1. **Nouvelles fonctionnalités** :
    - Détection automatique du type de terrain
    - Support de caméras multiples
    - Calibration automatique
 
-3. **Robustesse** :
+2. **Robustesse** :
    - Meilleure gestion des conditions difficiles
    - Auto-adaptation aux différents styles de terrain
    - Détection de la qualité des points détectés
