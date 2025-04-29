@@ -21,7 +21,6 @@ import argparse
 def Rebond():
     """
     Simule la détection de rebond.
-    Remplacez par votre propre logique si nécessaire.
     """
     time.sleep(1)
     return True
