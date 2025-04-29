@@ -4,6 +4,7 @@ import os
 import time
 import json
 import glob
+import math
 
 def ball(output_dir, video_path, model_path):
     output_jsonl = os.path.join(output_dir, "balle.jsonl")
@@ -34,6 +35,9 @@ def ball(output_dir, video_path, model_path):
 
     frame_counter = 0
     start_time = time.time()
+
+    detection_buffer = []  # tampon pour stocker les dernières positions valides
+    distance_max = 200     # distance max autorisée entre deux détections consécutives
 
     with open(output_jsonl, "a") as f_json:
         while cap.isOpened():
@@ -74,36 +78,47 @@ def ball(output_dir, video_path, model_path):
                     best_box.xywh[0][1].item(),
                 )
 
-                # Annoter uniquement la position détectée
-                cv2.circle(frame, (int(Ball_X), int(Ball_Y)), 5, (0, 0, 255), -1)
-                cv2.putText(
-                    frame,
-                    f"Balle ({best_conf:.2f})",
-                    (int(Ball_X), int(Ball_Y) - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5,
-                    (0, 255, 0),
-                    2,
-                )
+                detection_valid = True
+                if detection_buffer:
+                    last_x, last_y = detection_buffer[-1]
+                    dist = math.hypot(Ball_X - last_x, Ball_Y - last_y)
+                    if dist > distance_max:
+                        detection_valid = False  # trop éloigné de la précédente
 
-                frame_processing_time = time.time() - frame_start_time
+                if detection_valid:
+                    detection_buffer.append((Ball_X, Ball_Y))
+                    if len(detection_buffer) > 3:
+                        detection_buffer.pop(0)
 
-                detection_info["detections"].append({
-                    "Ball_X": int(Ball_X),
-                    "Ball_Y": int(Ball_Y),
-                    "confidence": best_conf,
-                    "temps_detection": frame_processing_time
-                })
+                    # Annoter la position détectée
+                    cv2.circle(frame, (int(Ball_X), int(Ball_Y)), 5, (0, 0, 255), -1)
+                    cv2.putText(
+                        frame,
+                        f"Balle ({best_conf:.2f})",
+                        (int(Ball_X), int(Ball_Y) - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (0, 255, 0),
+                        2,
+                    )
 
-                output_image_path = os.path.join(output_dir, f"detection_{frame_counter}.png")
-                cv2.imwrite(output_image_path, frame)
+                    frame_processing_time = time.time() - frame_start_time
 
+                    detection_info["detections"].append({
+                        "Ball_X": int(Ball_X),
+                        "Ball_Y": int(Ball_Y),
+                        "confidence": best_conf,
+                        "temps_detection": frame_processing_time
+                    })
+
+                    output_image_path = os.path.join(output_dir, f"detection_{frame_counter}.png")
+                    cv2.imwrite(output_image_path, frame)
+                else:
+                    detection_info["no_detection"] = True
             else:
                 detection_info["no_detection"] = True
 
-            # Écriture incrémentale ligne par ligne
             f_json.write(json.dumps(detection_info) + "\n")
-
             frame_counter += 1
 
     cap.release()
