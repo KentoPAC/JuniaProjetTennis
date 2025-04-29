@@ -54,6 +54,10 @@ def main():
     )
     print(f"→ JSON terrain généré dans {terrain_json}")
 
+    # après la détection terrain
+    with open(terrain_json, "r") as f:
+        terrain_str = f.read()
+
     # 2) Détection de la balle
     print("[2/2] Lancement détection balle...")
     ball(
@@ -68,7 +72,7 @@ def main():
         # Remplacez get_last_ball_xy() et player par votre propre logique
         x, y = 412.52, 205.46
         player = "bottom_player"
-        good = detection_fautes(terrain_json, x, y, player)
+        good = detection_fautes(terrain_str, x, y, player)
         print("Balle IN" if good else "Faute !")
 
     print("Pipeline terminé.")
