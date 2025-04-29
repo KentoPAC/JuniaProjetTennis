@@ -47,14 +47,9 @@ def ball(output_dir, video_path, model_path):
 
             frame_start_time = time.time()
 
-            # Détection avec confiance normale
-            results = model.predict(frame, conf=0.15, iou=0.15, verbose=False)
+            # Détection directe sans retenter si rien détecté
+            results = model.predict(frame, conf=0.05, iou=0.15, verbose=False)
             boxes = results[0].boxes
-
-            # Retenter si aucune box trouvée
-            if len(boxes) == 0:
-                results = model.predict(frame, conf=0.12, iou=0.15, verbose=False)
-                boxes = results[0].boxes
 
             best_box = None
             best_conf = 0
