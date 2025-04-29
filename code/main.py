@@ -11,6 +11,7 @@ USE_REFINE_KPS = False  # Activer refine_kps
 USE_HOMOGRAPHY = False  # Activer homography postprocessing
 
 import argparse
+import json
 import os
 import time
 
@@ -78,13 +79,25 @@ def main():
     )
 
     # 3) Analyse des fautes après chaque rebond
-    # Exemple de boucle : à adapter selon votre source de rebonds
     if Rebond():
-        # Remplacez get_last_ball_xy() et player par votre propre logique
-        x, y = 632.46, 160.99
-        player = "bottom_player"
-        good = detection_fautes(terrain_str, x, y, player)
-        print("Balle IN" if good else "Faute !")
+        # Récupération de la position de balle à partir du JSONL
+        frame_no = 112
+        player = "all"
+        x = y = None
+        ball_jsonl = os.path.join(BALL_OUTPUT_DIR, "balle.jsonl")
+        with open(ball_jsonl, "r") as f:
+            for line in f:
+                item = json.loads(line)
+                if item.get("frame") == frame_no and not item.get("no_detection", True):
+                    det = item["detections"][0]
+                    x, y = det["Ball_X"], det["Ball_Y"]
+                    print(f"Frame {frame_no} : x={x}, y={y}")
+                    break
+        if x is None or y is None:
+            print(f"Aucune détection pour la frame {frame_no}")
+        else:
+            good = detection_fautes(terrain_str, x, y, player)
+            print("Balle IN" if good else "Faute !")
 
     print("Pipeline terminé.")
 
