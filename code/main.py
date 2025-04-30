@@ -59,7 +59,7 @@ def main():
 
     # 1) Détection du terrain
     terrain_json = os.path.join(TERRAIN_OUTPUT_DIR, "terrain_points.json")
-    print("[1/2] Lancement détection terrain...")
+    print("[1/3] Lancement détection terrain...")
     infer_terrain(
         model_path=model_path,
         video_path=video_path,
@@ -74,13 +74,14 @@ def main():
         terrain_str = f.read()
 
     # 2) Détection de la balle
-    print("[2/2] Lancement détection balle...")
+    print("[2/3] Lancement détection balle...")
     ball(
         output_dir=BALL_OUTPUT_DIR,
         video_path=video_path,
         model_path="Ball/best2.pt",
     )
 
+    print("[3/3] Lancement détection Faute...")
     # 3) Analyse des fautes après chaque rebond
     if Rebond():
         # Récupération de la position de balle à partir du JSONL
