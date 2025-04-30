@@ -8,6 +8,7 @@ import glob
 def ball(output_dir, video_path, model_path):
     output_jsonl = os.path.join(output_dir, "balle.jsonl")
 
+
     # Supprimer l'ancien fichier JSONL s'il existe
     if os.path.exists(output_jsonl):
         os.remove(output_jsonl)
