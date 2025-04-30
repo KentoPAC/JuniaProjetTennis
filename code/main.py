@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-# main_configured.py : Pipeline détection tennis avec configuration intégrée
+# main.py : Pipeline détection tennis avec configuration intégrée
 
 # === Configuration - Modifiez ces variables selon vos besoins ===
 FIELD_MODEL = "terrain/model_tennis_court_det.pt"  # Chemin vers le modèle TrackNet
-INPUT_VIDEO = "../Vidéos/Test2.mp4"  # Chemin vers la vidéo d'entrée
-TERRAIN_OUTPUT_DIR = "./data/terrain"  # Dossier de sortie pour la détection de terrain
-BALL_OUTPUT_DIR = "./data/balle"  # Dossier de sortie pour la détection de balle
+INPUT_VIDEO = "../Vidéos/tennis4_14sec_720p.mp4"  # Chemin vers la vidéo d'entrée
+TERRAIN_OUTPUT_DIR = (
+    "./output/terrain"  # Dossier de sortie pour la détection de terrain
+)
+BALL_OUTPUT_DIR = "./output/balle"  # Dossier de sortie pour la détection de balle
 DURATION = 5.0  # Durée (s) pour la détection du terrain
 USE_REFINE_KPS = False  # Activer refine_kps
 USE_HOMOGRAPHY = False  # Activer homography postprocessing
+REBOUND_FRAME = 335  # Frame de rebond pour la détection de fautes
 
 import argparse
 import json
@@ -81,7 +84,7 @@ def main():
     # 3) Analyse des fautes après chaque rebond
     if Rebond():
         # Récupération de la position de balle à partir du JSONL
-        frame_no = 112
+        frame_no = REBOUND_FRAME
         player = "all"
         x = y = None
         ball_jsonl = os.path.join(BALL_OUTPUT_DIR, "balle.jsonl")
