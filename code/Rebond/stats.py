@@ -165,7 +165,7 @@ def main():
     """
     # Chemin vers le fichier de données
     data_path = os.path.join(
-        os.path.dirname(__file__), "..", "data", "balle", "balle.jsonl"
+        os.path.dirname(__file__), "..", "output", "balle", "balle.jsonl"
     )
 
     # Charger les données de la balle
