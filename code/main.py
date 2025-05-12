@@ -8,10 +8,10 @@ TERRAIN_OUTPUT_DIR = (
     "./output/terrain"  # Dossier de sortie pour la détection de terrain
 )
 BALL_OUTPUT_DIR = "./output/balle"  # Dossier de sortie pour la détection de balle
-DURATION = 5.0  # Durée (s) pour la détection du terrain
-USE_REFINE_KPS = False  # Activer refine_kps
-USE_HOMOGRAPHY = False  # Activer homography postprocessing
-REBOUND_FRAME = 335  # Frame de rebond pour la détection de fautes
+DURATION = 4.0  # Durée (s) pour la détection du terrain
+USE_REFINE_KPS = True  # Activer refine_kps
+USE_HOMOGRAPHY = True  # Activer homography postprocessing
+REBOUND_FRAME = 9999  # Frame de rebond pour la détection de fautes
 
 import argparse
 import json
@@ -101,7 +101,7 @@ def main():
             print(f"Aucune détection pour la frame {frame_no}")
         else:
             good = detection_fautes(terrain_str, x, y, player)
-            print("Balle IN" if good else "Faute !")
+            print("\n\n\nBalle IN!! 🎾" if good else "Faute!")
 
     print("Pipeline terminé.")
 
